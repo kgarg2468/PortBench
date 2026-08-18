@@ -1,6 +1,6 @@
 {
   "project": "PortBench",
-  "updated": "2026-08-18T10:50:00Z",
+  "updated": "2026-08-18T11:25:00Z",
   "nodes": [
     {
       "id": "spike",
@@ -47,8 +47,8 @@
     {
       "id": "smoke",
       "label": "Smoke run\n(5 tasks x 1 model)",
-      "status": "running",
-      "note": "5 haiku tasks (3 charset + 2 libp2p) + 2 gpt-5.6-sol tasks, full pipeline incl. repair round. Also times a real task cycle.",
+      "status": "done",
+      "note": "Pipeline validated E2E (7 tasks, 2 models, repair round works). Scores VOID (pre-P0-fix). Early signal: haiku 4/5 compile errors one-shot, repair flipped 2 to PASS. ~90s avg/attempt -> full sweep est. 16-32h.",
       "deps": [
         "harness",
         "cli_probe",
