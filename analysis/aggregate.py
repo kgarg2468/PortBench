@@ -28,10 +28,17 @@ Design notes that are easy to get wrong and expensive to get wrong quietly:
   Both raw and effective counts are recorded at the top of leaderboard.json, and every model
   record carries `no_data` and `not_attempted` so the site can print an asterisk.
 
-  No-data.  A task whose attempt 0 came back TRANSPORT_ERROR or TIMEOUT *and* which has no
-  attempt 1 record never produced any model output. Scoring it as a failure would punish a
-  model for an API outage. It is dropped from the denominator and surfaced separately. A
-  transport error on attempt 1 is not no-data: attempt 0 already produced a real verdict.
+  No-data.  A task whose attempt 0 came back TRANSPORT_ERROR *and* which has no attempt 1
+  record never produced any model output — the CLI call itself failed. Scoring it as a
+  failure would punish a model for an API outage, so it is dropped from the denominator and
+  surfaced separately. A transport error on attempt 1 is not no-data: attempt 0 already
+  produced a real verdict.
+
+  TIMEOUT is NOT no-data. It is what `harness/score.py` returns when the *test run* blows its
+  budget: the model produced code, the code was injected, and the suite then hung. That is a
+  real failure of the port. It stays in the denominator, its tokens count, and it is bucketed
+  under `harness` with the verdict split preserved in `taxonomy.harness_breakdown`. See the
+  note on `buckets.NO_DATA_VERDICTS` for the one ambiguity the verdict string still carries.
 
   Backfill.  If several run files for one model match `--runs`, they are applied oldest to
   newest and a later run overrides an earlier one for the same (task_id, attempt). "Later" is
@@ -190,7 +197,13 @@ class ModelStats:
         self.by_project: dict[str, dict] = {}
         self.tax = {"attempt_0": {b: 0 for b in buckets.BUCKET_IDS},
                     "attempt_1": {b: 0 for b in buckets.BUCKET_IDS}}
+        # The `harness` bucket lumps four very different infrastructure outcomes together.
+        # A TIMEOUT (the suite hung on the model's code) is a much stronger statement than an
+        # EXTRACTION_ERROR (no function in the reply), so the split is carried alongside the
+        # bucket totals rather than being thrown away.
+        self.harness_breakdown = {"attempt_0": {}, "attempt_1": {}}
         self.code_counts: dict[str, int] = {}
+        self.repair_missing: list[str] = []
 
         self.tokens_in = 0
         self.tokens_out = 0
@@ -221,6 +234,11 @@ class ModelStats:
             if a1 is not None:
                 self.repairs_attempted += 1
                 self.repairs_passed += int(a1.get("verdict") == buckets.PASS)
+            elif a0.get("verdict") in buckets.REPAIR_ELIGIBLE:
+                # The harness owed this task a repair round and no attempt 1 is on record, so
+                # the run was interrupted. Attempt 0 still stands as the outcome (the one-shot
+                # measurement is real), but the +repair figure is a floor, not a result.
+                self.repair_missing.append(task_id)
 
             for key, record in (("attempt_0", a0), ("attempt_1", a1)):
                 if record is None:
@@ -243,8 +261,11 @@ class ModelStats:
 
                 if verdict == buckets.PASS:
                     continue
-                self.tax[key][buckets.bucket_for_attempt(
-                    verdict, record.get("error_class_hint"))] += 1
+                bucket = buckets.bucket_for_attempt(verdict, record.get("error_class_hint"))
+                self.tax[key][bucket] += 1
+                if bucket == "harness":
+                    slice_ = self.harness_breakdown[key]
+                    slice_[verdict] = slice_.get(verdict, 0) + 1
                 if key == "attempt_0":
                     for code in record.get("error_class_hint") or []:
                         self.code_counts[code] = self.code_counts.get(code, 0) + 1
@@ -252,15 +273,27 @@ class ModelStats:
         self.duration_median = statistics.median(durations) if durations else 0.0
         self.failed_oneshot = self.n - self.passed_oneshot
 
-        # Tokens: sum of the attempts that reported them. If *no* attempt reported any, we
-        # have no usage data at all and the cost must be null rather than $0.00.
+        # Tokens and cost. Three states, and the difference between the second and the third
+        # is the whole point:
+        #
+        #   all attempts priced   -> cost is exact.
+        #   some attempts priced  -> cost is a floor over the priced attempts only, marked
+        #                            `cost_partial` with the count, so nobody reads it as a
+        #                            total.
+        #   no attempt priced     -> cost is null, `cost_available` false. NEVER 0. A run that
+        #                            reported no usage (an early codex smoke run, a model whose
+        #                            CLI does not emit a usage block) would otherwise land at
+        #                            $0.00 and take the top of the "cheapest per solved task"
+        #                            column, which is exactly backwards.
         self.has_tokens = self.token_attempts > 0
+        self.cost_partial = self.has_tokens and self.token_missing_attempts > 0
+        self.price = buckets.price_for(model)
         self.cost = buckets.cost_usd(
             model,
             self.tokens_in if self.has_tokens else None,
             self.tokens_out if self.has_tokens else None,
         )
-        self.price = buckets.price_for(model)
+        self.cost_available = self.cost is not None
 
     # -- derived rates, all over the scored denominator ---------------------------------
 
@@ -307,6 +340,8 @@ class ModelStats:
             "no_data": len(self.no_data),
             "no_data_tasks": self.no_data,
             "not_attempted": len(self.not_attempted),
+            "repair_missing": len(self.repair_missing),
+            "repair_missing_tasks": self.repair_missing,
             "passed_oneshot": self.passed_oneshot,
             "passed_after_repair": self.passed_after_repair,
             "verdicts": {
@@ -327,6 +362,10 @@ class ModelStats:
             ),
             "price_confidence": self.price["confidence"] if self.price else "unknown",
             "cost_usd": None if self.cost is None else round(self.cost, 4),
+            "cost_available": self.cost_available,
+            "cost_partial": self.cost_partial,
+            "cost_priced_attempts": self.token_attempts,
+            "cost_unpriced_attempts": self.token_missing_attempts,
             "duration_s_total": round(self.duration_total, 1),
             "duration_s_median": round(self.duration_median, 1),
         }
@@ -349,6 +388,11 @@ class ModelStats:
             "family": self.family,
             "attempt_0": dict(self.tax["attempt_0"]),
             "attempt_1": dict(self.tax["attempt_1"]),
+            "harness_breakdown": {
+                key: {v: self.harness_breakdown[key][v]
+                      for v in sorted(self.harness_breakdown[key])}
+                for key in ("attempt_0", "attempt_1")
+            },
         }
 
 
@@ -442,8 +486,10 @@ def build_taxonomy(stats: list[ModelStats], sweep_id: str, generated: str) -> di
             "attempt sum to that attempt's failure count in leaderboard.json. Compile failures "
             "are keyed off the first rustc code in error_class_hint (the harness stores that "
             "list sorted, so 'first' is deterministic); test_fail and harness come straight off "
-            "the verdict. top_codes counts every code in an attempt-0 failure, not just the one "
-            "that decided the bucket."
+            "the verdict. harness_breakdown splits the harness bucket by verdict, so a TIMEOUT "
+            "(the suite hung on the model's code) is distinguishable from an EXTRACTION_ERROR "
+            "(no function in the reply). top_codes counts every code in an attempt-0 failure, "
+            "not just the one that decided the bucket."
         ),
         "run_id": sweep_id,
         "generated": generated,

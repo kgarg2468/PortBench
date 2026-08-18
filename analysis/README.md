@@ -67,11 +67,11 @@ harness records do not.
 * **pass with repair** — attempt 0 *or* attempt 1 verdict is `PASS`. It is a superset of
   one-shot, which is why the site can draw one bar with two segments.
 
-### No-data
+### No-data — `TRANSPORT_ERROR` only
 
-A task whose **attempt 0** came back `TRANSPORT_ERROR` or `TIMEOUT` **and** which has no
-attempt 1 record never produced any model output. The CLI died or blew its budget; the
-model never got to be wrong. Scoring that as a failure charges a model for an API outage.
+A task whose **attempt 0** came back `TRANSPORT_ERROR` **and** which has no attempt 1
+record never produced any model output: the CLI call itself failed, so the model never got
+to be wrong. Scoring that as a failure charges a model for an API outage.
 
 Such tasks are:
 
@@ -85,6 +85,33 @@ verdict, so the one-shot measurement stands and the repair simply did not land.
 A task present for one model and absent for another (a run still in flight) is counted
 as `not_attempted` and also leaves the denominator — reported separately from `no_data`
 because the causes are different.
+
+### `TIMEOUT` is a failure, not no-data
+
+`TIMEOUT` stays in the denominator, keeps its tokens, and is bucketed like any other
+failure. In `harness/score.py` it is what the **test run** returns when it blows
+`--test-timeout`: the model produced code, the code was injected, and the suite then hung
+or ran forever. That is a genuine failure of the port. Treating it as no-data would delete
+a real failure from the denominator and inflate the pass rate.
+
+Because `harness/run.py: REPAIR_ELIGIBLE` is `(COMPILE_ERROR, TEST_FAIL, SUITE_ERROR)`,
+a `TIMEOUT` is **terminal** — the harness never owed it a repair round, so a lone attempt-0
+`TIMEOUT` is a complete task, not an interrupted one.
+
+Interruptions are tracked separately: a scored task whose attempt-0 verdict *is* in
+`REPAIR_ELIGIBLE` but which has no attempt 1 record means the process died mid-run. Attempt
+0 still stands (the one-shot measurement is real) but the +repair figure is a floor, so the
+task is counted in `repair_missing` and listed in `repair_missing_tasks`. The eligibility
+set is mirrored in `buckets.REPAIR_ELIGIBLE` with a test asserting the two agree.
+
+**One residual ambiguity**, worth a harness fix rather than a heuristic here:
+`harness/models.py` also raises `TransportError(timed_out=True)` when the *model CLI*
+times out, and `run.py` writes that as `TIMEOUT` too. Those records are distinguishable in
+practice — null tokens and a populated `note` — but a single verdict string covers both
+causes. Splitting the verdict (`MODEL_TIMEOUT` vs `TEST_TIMEOUT`) is the clean fix. Until
+then the test-run reading wins, because it is the only one that has actually occurred in
+any sweep on disk: every `TIMEOUT` in `results/` carries real token counts and sits at
+attempt 1, and every attempt-0 no-data is a `TRANSPORT_ERROR`.
 
 ### Backfill: later runs override earlier ones
 
@@ -101,12 +128,28 @@ contributed.
 ### Cost
 
 `tokens_in` / `tokens_out` are summed per model over every scored attempt that reported
-them. Attempts that reported nothing are counted in `tokens.attempts_without_usage` rather
-than silently treated as zero.
+them. Attempts that reported nothing are counted rather than silently treated as zero.
+Three states:
 
-If **no** attempt reported usage, `cost_usd` is `null` — never `0`. An early codex smoke
-run reports no usage at all; charging it `$0.00` would put it top of the "cheapest per
-solved task" column, which is exactly backwards.
+| state | `cost_usd` | `cost_available` | `cost_partial` |
+|---|---|---|---|
+| every scored attempt reported usage | exact | `true` | `false` |
+| some attempts reported usage | a **floor** over the priced attempts | `true` | `true` |
+| no attempt reported usage | `null` — **never `0`** | `false` | `false` |
+
+`cost_priced_attempts` and `cost_unpriced_attempts` give the split, so a partial figure can
+never be mistaken for a total.
+
+The null case matters: an early codex smoke run reports no usage at all, and charging it
+`$0.00` would put it top of the "cheapest per solved task" column, which is exactly
+backwards. `buckets.cost_usd` returns `None` — never `0.0` — whenever either the price or
+the token counts are missing.
+
+Note for whoever wires the frontend: `site/js/app.js` currently computes cost inline as
+`m.tokens.in / 1e6 * price.in + ...`, and in JavaScript `null / 1e6` is `0`, so a null-cost
+model would still render `$0.00` there. The data side is correct and self-describing —
+`cost_available: false` is the flag to branch on — but the guard belongs in `app.js`, which
+is outside this directory's scope.
 
 **Pricing is a list-price approximation.** The table lives in `buckets.py:PRICING`, in USD
 per million tokens, and each row carries a `confidence` of `published` (a long-stable
@@ -135,6 +178,11 @@ Six buckets. The ids are load-bearing: `site/js/app.js` keys its colour map off 
 | `other_compile` | fallback: any compile failure whose code is not in the tables above, or which carries no code at all |
 | `test_fail` | verdict `TEST_FAIL` — it compiled, it was wrong |
 | `harness` | verdict `EXTRACTION_ERROR`, `TRANSPORT_ERROR`, `TIMEOUT`, `SUITE_ERROR` |
+
+The `harness` bucket lumps four very different outcomes together, so the verdict split is
+carried alongside it as `harness_breakdown` per attempt. A `TIMEOUT` (the suite hung on the
+model's code) is a much stronger statement than an `EXTRACTION_ERROR` (no function in the
+reply), and the totals still sum to the bucket, so nothing double-counts.
 
 Every code is commented individually in `buckets.py`. Each non-PASS attempt is filed under
 exactly **one** bucket, so per model the buckets for an attempt sum to that attempt's

@@ -39,10 +39,28 @@ VERDICT_ORDER = [
     TIMEOUT,
 ]
 
-# Verdicts that mean "the model was never given a fair shot at this task": the CLI died or
-# blew its budget before any code came back. `aggregate.py` promotes these to `no-data` only
-# when they land on attempt 0 *and* no attempt 1 exists.
-NO_DATA_VERDICTS = (TRANSPORT_ERROR, TIMEOUT)
+# Verdicts that mean "the model call never succeeded, so there is no output to judge".
+# `aggregate.py` promotes these to `no-data` only when they land on attempt 0 *and* no
+# attempt 1 exists.
+#
+# TIMEOUT is deliberately NOT here. In `harness/score.py` a TIMEOUT verdict is what the
+# *test run* returns when it blows `--test-timeout`: the model produced code, the code was
+# injected, and the suite then hung or ran forever. That is a genuine failure of the port —
+# it keeps its place in the denominator, its tokens count towards cost, and it is bucketed
+# in the taxonomy like any other failure.
+#
+# Caveat worth knowing: `harness/models.py` also raises `TransportError(timed_out=True)` when
+# the *model CLI itself* times out, and `harness/run.py` writes that as TIMEOUT too. Those
+# records carry null tokens and a populated `note`, so the two sources are distinguishable in
+# principle, but one verdict string covers both. Splitting them (MODEL_TIMEOUT vs
+# TEST_TIMEOUT) is a harness change; until then the test-run reading wins, because it is the
+# one that has actually occurred in every sweep on disk.
+NO_DATA_VERDICTS = (TRANSPORT_ERROR,)
+
+# Verdicts the harness re-prompts on, copied from `harness/run.py: REPAIR_ELIGIBLE`. Used to
+# tell "the task ended here, by design" apart from "the process died before the repair round"
+# — the latter is an incomplete task, not a model result, and is flagged as `repair_missing`.
+REPAIR_ELIGIBLE = (COMPILE_ERROR, TEST_FAIL, SUITE_ERROR)
 
 
 # --------------------------------------------------------------------------- taxonomy
