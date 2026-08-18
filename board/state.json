@@ -1,0 +1,14 @@
+{
+  "project": "PortBench",
+  "updated": "2026-08-18T08:05:00Z",
+  "nodes": [
+    { "id": "spike", "label": "Dataset spike\n(RustRepoTrans valid?)", "status": "running", "note": "Opus worker: license check + 10 reference-solution builds", "deps": [] },
+    { "id": "harness", "label": "Harness\n(task in → cargo verdict out)", "status": "blocked", "note": "One-shot prompt + one repair round (compiler error fed back). Logs tokens per task. Results land as versioned JSON in repo.", "deps": ["spike"] },
+    { "id": "smoke", "label": "Smoke run\n(5 tasks x 1 model)", "status": "blocked", "note": "Proves end-to-end before burning full runs", "deps": ["harness"] },
+    { "id": "run_claude", "label": "Full run: Claude family", "status": "blocked", "note": "108 tasks x Fable 5, Opus 5, Sonnet 5, Haiku 4.5 via claude -p (one-shot + repair)", "deps": ["smoke"] },
+    { "id": "run_gpt", "label": "Full run: GPT family", "status": "blocked", "note": "108 tasks x GPT-5.6 Sol, Terra, Luna, GPT-5.5 via codex exec", "deps": ["smoke"] },
+    { "id": "taxonomy", "label": "Failure taxonomy\n(borrow checker vs deps vs logic)", "status": "blocked", "note": "Headline chart + repair-fix rate + cost-per-solved-task", "deps": ["run_claude", "run_gpt"] },
+    { "id": "site", "label": "Leaderboard site", "status": "blocked", "note": "Static, reads results JSON client-side (living page). Leaderboard + trend + failure gallery. Credits RustRepoTrans.", "deps": ["taxonomy"] },
+    { "id": "writeup", "label": "Write-up / launch draft", "status": "blocked", "note": "\"The borrow checker is AI's final boss.\" User reviews before anything is published.", "deps": ["taxonomy", "site"] }
+  ]
+}
