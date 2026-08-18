@@ -58,7 +58,7 @@
     {
       "id": "run_claude",
       "label": "Full run: Claude family",
-      "status": "running",
+      "status": "done",
       "note": "fable DONE 86/108 one-shot +12 repair. opus DONE 80 one-shot but 12 TRANSPORT_ERROR (API overload) -> backfill needed. sonnet mid-run, haiku queued.",
       "deps": [
         "smoke",
@@ -66,7 +66,7 @@
         "calibration",
         "smoke2"
       ],
-      "notes": "Checkpoint 14:15 PDT: fable DONE (86 one-shot PASS, +12 repair = 98). opus DONE-with-holes (80 one-shot, +12 repair; 12 attempt-0 TRANSPORT_ERROR need backfill). sonnet DONE (68 one-shot, +20 repair = 88). haiku RUNNING at ~65/108 (so far 35 one-shot PASS, +14 repair; 26 attempt-0 compile errors)."
+      "notes": "COMPLETE 16:12 PDT. fable: 86 one-shot +12 repair = 98. opus: 80 +12 = 92 (12 transport holes -> backfill). sonnet: 68 +20 = 88. haiku: 56 +21 = 77. Denominator 108 raw; 100 effective after exclusions; opus scored denom shrinks until backfill lands."
     },
     {
       "id": "run_gpt",
@@ -202,11 +202,12 @@
     {
       "id": "backfill_transport",
       "label": "Transport backfill\n(rerun API-overload tasks)",
-      "status": "blocked",
+      "status": "running",
       "note": "12 opus tasks (+1 repair) hit TRANSPORT_ERROR; rerun targeted, merge in aggregation",
       "deps": [
         "run_claude"
-      ]
+      ],
+      "notes": "Started 16:14 PDT: full-opus-01b over 13 tasks \u2014 the 12 attempt-0 TRANSPORT_ERRORs plus ed25519 fn4 whose repair call transport-errored. Aggregator later-run-override merges it over full-opus-01."
     },
     {
       "id": "gallery_capture",
