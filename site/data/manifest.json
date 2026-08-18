@@ -1,0 +1,11 @@
+{
+  "schema": "portbench.manifest/1",
+  "comment": "Points the site at a dataset directory. To publish real results: drop the four files into site/data/real/ and change \"dataset\" to \"real\". No code changes required.",
+  "dataset": "sample",
+  "files": {
+    "leaderboard": "sample/leaderboard.json",
+    "taxonomy": "sample/taxonomy.json",
+    "trend": "sample/trend.json",
+    "gallery": "sample/gallery.json"
+  }
+}

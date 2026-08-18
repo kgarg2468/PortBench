@@ -1,0 +1,123 @@
+{
+  "sample": true,
+  "schema": "portbench.taxonomy/1",
+  "comment": "Every non-PASS attempt bucketed once. Compile buckets are keyed off error_class_hint (rustc codes); test_fail and harness come straight off the verdict. Per model, the buckets for an attempt sum to that attempt's failure count in leaderboard.json. INVENTED SAMPLE DATA.",
+  "run_id": "sample-sweep-2026-08-18",
+  "generated": "2026-08-18T09:00:00Z",
+  "buckets": [
+    {
+      "id": "borrow",
+      "label": "Borrow checker & lifetimes",
+      "short": "Borrow / lifetimes",
+      "codes": ["E0382", "E0499", "E0502", "E0505", "E0506", "E0507", "E0515", "E0716", "E0106", "E0597"],
+      "blurb": "Ownership, moves, aliasing, dangling references. The part of Rust that has no Python analogue."
+    },
+    {
+      "id": "types",
+      "label": "Types & traits",
+      "short": "Types / traits",
+      "codes": ["E0308", "E0277", "E0599", "E0609", "E0061", "E0107", "E0369"],
+      "blurb": "Mismatched types, unsatisfied trait bounds, methods that do not exist on the receiver."
+    },
+    {
+      "id": "imports",
+      "label": "Unresolved imports & deps",
+      "short": "Imports / deps",
+      "codes": ["E0432", "E0433", "E0463", "E0405", "E0412", "E0425"],
+      "blurb": "The model reached for a path or a crate that is not in this workspace's Cargo.toml."
+    },
+    {
+      "id": "other_compile",
+      "label": "Other compile errors",
+      "short": "Other compile",
+      "codes": ["E0072", "E0133", "E0201", "E0271", "E0507", "E0658", "syntax"],
+      "blurb": "Everything else rustc rejected: syntax, unstable features, malformed items."
+    },
+    {
+      "id": "test_fail",
+      "label": "Test-logic failures",
+      "short": "Test logic",
+      "codes": [],
+      "blurb": "It compiled. It was wrong. Semantics lost in translation, caught by the project's own suite."
+    },
+    {
+      "id": "harness",
+      "label": "Extraction / transport / timeout",
+      "short": "Harness",
+      "codes": [],
+      "blurb": "No usable function in the response, an API error, or the 700s test budget blown."
+    }
+  ],
+  "models": [
+    {
+      "model": "fable-5",
+      "label": "Claude Fable 5",
+      "family": "claude",
+      "attempt_0": { "borrow": 19, "types": 11, "imports": 6, "other_compile": 5, "test_fail": 18, "harness": 3 },
+      "attempt_1": { "borrow": 17, "types": 9, "imports": 4, "other_compile": 4, "test_fail": 16, "harness": 1 }
+    },
+    {
+      "model": "gpt-5.6-sol",
+      "label": "GPT-5.6 Sol",
+      "family": "gpt",
+      "attempt_0": { "borrow": 19, "types": 13, "imports": 6, "other_compile": 5, "test_fail": 18, "harness": 3 },
+      "attempt_1": { "borrow": 17, "types": 9, "imports": 5, "other_compile": 4, "test_fail": 17, "harness": 1 }
+    },
+    {
+      "model": "opus-5",
+      "label": "Claude Opus 5",
+      "family": "claude",
+      "attempt_0": { "borrow": 21, "types": 12, "imports": 7, "other_compile": 5, "test_fail": 19, "harness": 3 },
+      "attempt_1": { "borrow": 19, "types": 9, "imports": 5, "other_compile": 4, "test_fail": 18, "harness": 1 }
+    },
+    {
+      "model": "gpt-5.6-terra",
+      "label": "GPT-5.6 Terra",
+      "family": "gpt",
+      "attempt_0": { "borrow": 23, "types": 14, "imports": 8, "other_compile": 5, "test_fail": 19, "harness": 3 },
+      "attempt_1": { "borrow": 21, "types": 11, "imports": 6, "other_compile": 4, "test_fail": 19, "harness": 1 }
+    },
+    {
+      "model": "sonnet-5",
+      "label": "Claude Sonnet 5",
+      "family": "claude",
+      "attempt_0": { "borrow": 25, "types": 15, "imports": 8, "other_compile": 6, "test_fail": 18, "harness": 3 },
+      "attempt_1": { "borrow": 22, "types": 13, "imports": 6, "other_compile": 5, "test_fail": 18, "harness": 2 }
+    },
+    {
+      "model": "gpt-5.6-luna",
+      "label": "GPT-5.6 Luna",
+      "family": "gpt",
+      "attempt_0": { "borrow": 26, "types": 18, "imports": 10, "other_compile": 6, "test_fail": 17, "harness": 4 },
+      "attempt_1": { "borrow": 24, "types": 16, "imports": 8, "other_compile": 5, "test_fail": 18, "harness": 2 }
+    },
+    {
+      "model": "gpt-5.5",
+      "label": "GPT-5.5",
+      "family": "gpt",
+      "attempt_0": { "borrow": 27, "types": 19, "imports": 10, "other_compile": 7, "test_fail": 17, "harness": 4 },
+      "attempt_1": { "borrow": 25, "types": 17, "imports": 9, "other_compile": 6, "test_fail": 18, "harness": 2 }
+    },
+    {
+      "model": "haiku-4.5",
+      "label": "Claude Haiku 4.5",
+      "family": "claude",
+      "attempt_0": { "borrow": 28, "types": 21, "imports": 12, "other_compile": 7, "test_fail": 17, "harness": 5 },
+      "attempt_1": { "borrow": 27, "types": 19, "imports": 11, "other_compile": 6, "test_fail": 18, "harness": 3 }
+    }
+  ],
+  "top_codes": [
+    { "code": "E0502", "bucket": "borrow", "count": 71, "message": "cannot borrow `x` as mutable because it is also borrowed as immutable" },
+    { "code": "E0382", "bucket": "borrow", "count": 64, "message": "borrow of moved value" },
+    { "code": "E0308", "bucket": "types", "count": 58, "message": "mismatched types" },
+    { "code": "E0515", "bucket": "borrow", "count": 47, "message": "cannot return value referencing local variable" },
+    { "code": "E0432", "bucket": "imports", "count": 41, "message": "unresolved import" },
+    { "code": "E0277", "bucket": "types", "count": 38, "message": "the trait bound is not satisfied" },
+    { "code": "E0499", "bucket": "borrow", "count": 29, "message": "cannot borrow `x` as mutable more than once at a time" },
+    { "code": "E0507", "bucket": "borrow", "count": 26, "message": "cannot move out of borrowed content" },
+    { "code": "E0599", "bucket": "types", "count": 22, "message": "no method named `f` found" },
+    { "code": "E0716", "bucket": "borrow", "count": 17, "message": "temporary value dropped while borrowed" },
+    { "code": "E0106", "bucket": "borrow", "count": 14, "message": "missing lifetime specifier" },
+    { "code": "E0433", "bucket": "imports", "count": 12, "message": "failed to resolve: use of undeclared crate or module" }
+  ]
+}

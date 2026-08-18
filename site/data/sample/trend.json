@@ -1,0 +1,45 @@
+{
+  "sample": true,
+  "schema": "portbench.trend/1",
+  "comment": "One point per full sweep. Counts out of tasks_total; the site derives rates. Medians are across the models run on that date, so the model set is not constant -- that caveat is rendered on the page. INVENTED SAMPLE DATA.",
+  "generated": "2026-08-18T09:00:00Z",
+  "tasks_total": 108,
+  "points": [
+    {
+      "date": "2025-11-20",
+      "run_id": "sample-sweep-2025-11-20",
+      "models_run": 4,
+      "best_model": "gpt-5.5",
+      "best_model_label": "GPT-5.5",
+      "best_passed_oneshot": 24,
+      "best_passed_after_repair": 31,
+      "median_passed_oneshot": 19,
+      "median_passed_after_repair": 24,
+      "note": "First sweep. Prior-generation flagships only."
+    },
+    {
+      "date": "2026-03-04",
+      "run_id": "sample-sweep-2026-03-04",
+      "models_run": 6,
+      "best_model": "opus-5",
+      "best_model_label": "Claude Opus 5",
+      "best_passed_oneshot": 37,
+      "best_passed_after_repair": 47,
+      "median_passed_oneshot": 27,
+      "median_passed_after_repair": 34,
+      "note": "Baseline-failure allowlist added for libp2p; earlier runs under-counted passes."
+    },
+    {
+      "date": "2026-08-18",
+      "run_id": "sample-sweep-2026-08-18",
+      "models_run": 8,
+      "best_model": "fable-5",
+      "best_model_label": "Claude Fable 5",
+      "best_passed_oneshot": 46,
+      "best_passed_after_repair": 57,
+      "median_passed_oneshot": 34.5,
+      "median_passed_after_repair": 44,
+      "note": "Eight models. Borrow-checker share of compile errors essentially unchanged since the first sweep."
+    }
+  ]
+}
