@@ -1,5 +1,6 @@
 target/
 __pycache__/
+dataset/
 .DS_Store
 *.log
 work/
