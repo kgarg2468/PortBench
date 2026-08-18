@@ -59,27 +59,25 @@
       "id": "run_claude",
       "label": "Full run: Claude family",
       "status": "done",
-      "note": "fable DONE 86/108 one-shot +12 repair. opus DONE 80 one-shot but 12 TRANSPORT_ERROR (API overload) -> backfill needed. sonnet mid-run, haiku queued.",
+      "note": "COMPLETE 16:12 PDT. fable: 86 one-shot +12 repair = 98. opus: 80 +12 = 92 (12 transport holes -> backfill). sonnet: 68 +20 = 88. haiku: 56 +21 = 77. Denominator 108 raw; 100 effective after exclusions; opus scored denom shrinks until backfill lands.",
       "deps": [
         "smoke",
         "gpt_review",
         "calibration",
         "smoke2"
-      ],
-      "notes": "COMPLETE 16:12 PDT. fable: 86 one-shot +12 repair = 98. opus: 80 +12 = 92 (12 transport holes -> backfill). sonnet: 68 +20 = 88. haiku: 56 +21 = 77. Denominator 108 raw; 100 effective after exclusions; opus scored denom shrinks until backfill lands."
+      ]
     },
     {
       "id": "run_gpt",
       "label": "Full run: GPT family",
       "status": "running",
-      "note": "sol DONE 62 one-shot +28 repair (83% w/ repair). terra DONE 49+21. luna running, gpt-5.5 queued.",
+      "note": "Checkpoint 14:15 PDT: sol DONE (62 one-shot, +28 repair = 90). terra DONE (57 one-shot, +23 repair = 80). luna DONE (48 one-shot, +18 repair = 66). gpt-5.5 RUNNING at ~84/108 (libp2p tail).",
       "deps": [
         "smoke",
         "gpt_review",
         "calibration",
         "smoke2"
-      ],
-      "notes": "Checkpoint 14:15 PDT: sol DONE (62 one-shot, +28 repair = 90). terra DONE (57 one-shot, +23 repair = 80). luna DONE (48 one-shot, +18 repair = 66). gpt-5.5 RUNNING at ~84/108 (libp2p tail)."
+      ]
     },
     {
       "id": "taxonomy",
@@ -196,18 +194,18 @@
       "note": "PR #4 merged (64d4e65): 46/46 tests, TIMEOUT-in-denominator + null-cost fixes. Zero-borrowck finding verified on raw data.",
       "deps": [
         "calibration",
-        "site_pr"
+        "site_pr",
+        "flake_rerun"
       ]
     },
     {
       "id": "backfill_transport",
       "label": "Transport backfill\n(rerun API-overload tasks)",
       "status": "running",
-      "note": "12 opus tasks (+1 repair) hit TRANSPORT_ERROR; rerun targeted, merge in aggregation",
+      "note": "Started 16:14 PDT: full-opus-01b over 13 tasks \u2014 the 12 attempt-0 TRANSPORT_ERRORs plus ed25519 fn4 whose repair call transport-errored. Aggregator later-run-override merges it over full-opus-01.",
       "deps": [
         "run_claude"
-      ],
-      "notes": "Started 16:14 PDT: full-opus-01b over 13 tasks \u2014 the 12 attempt-0 TRANSPORT_ERRORs plus ed25519 fn4 whose repair call transport-errored. Aggregator later-run-override merges it over full-opus-01."
+      ]
     },
     {
       "id": "gallery_capture",
@@ -216,6 +214,17 @@
       "note": "PR #5 merged remotely (resume-artifact fix, 102/102 tests). Main checkout pull deferred until lanes finish; then subset rerun with --keep-artifacts.",
       "deps": [
         "aggregator"
+      ]
+    },
+    {
+      "id": "flake_rerun",
+      "label": "Env-flake clean reruns",
+      "status": "blocked",
+      "note": "DISCOVERY 16:30 PDT: under two-lane load, 4 timing-sensitive libp2p tests (ping_pong, idle_timeout_with_keep_alive_no, connect, kad bootstrap-interval) failed across 12-28 unrelated tasks for every model \u2014 123 attempt verdicts are sole-env-flake TEST_FAILs. Fix: all 4 added to FLAKY_TESTS; every affected task x model pair (89 so far; gpt-5.5 counted when its lane ends) re-runs start-to-finish on the idle machine as full-<model>-02; aggregator later-run override replaces contaminated verdicts. 4 attempt-1 TIMEOUTs left as-is, disclosed. Blocked on: opus backfill + lane B (needs idle machine).",
+      "deps": [
+        "run_claude",
+        "run_gpt",
+        "backfill_transport"
       ]
     }
   ]
