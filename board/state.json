@@ -1,6 +1,6 @@
 {
   "project": "PortBench",
-  "updated": "2026-08-18T15:20:00Z",
+  "updated": "2026-08-18T15:55:00Z",
   "nodes": [
     {
       "id": "spike",
@@ -178,8 +178,8 @@
     {
       "id": "site_pr",
       "label": "Site PR\n(Greptile review + merge)",
-      "status": "running",
-      "note": "PR #3 awaiting Greptile",
+      "status": "done",
+      "note": "Greptile: 2 findings (zero-scale render loop, $Infinity cost) \u2014 fixed by orchestrator, verified in browser, merged as 21c9fa4",
       "deps": [
         "site_scaffold"
       ]
