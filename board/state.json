@@ -1,6 +1,6 @@
 {
   "project": "PortBench",
-  "updated": "2026-08-18T13:20:00Z",
+  "updated": "2026-08-18T15:20:00Z",
   "nodes": [
     {
       "id": "spike",
@@ -96,7 +96,8 @@
       "note": "Static, reads results JSON client-side (living page). Leaderboard + trend + failure gallery. Credits RustRepoTrans.",
       "deps": [
         "taxonomy",
-        "site_scaffold"
+        "site_scaffold",
+        "site_pr"
       ]
     },
     {
@@ -121,8 +122,8 @@
     {
       "id": "site_scaffold",
       "label": "Site scaffold\n(leaderboard UI vs sample data)",
-      "status": "running",
-      "note": "Opus worker in isolated worktree: dark leaderboard + taxonomy/trend charts + gallery, reads results JSON client-side. Wires to real data after runs.",
+      "status": "done",
+      "note": "Worker died before committing; files complete + verified in browser. Salvaged, shipped as PR #3. Sample-data banner works; real data = pure file swap.",
       "deps": [
         "scaffold"
       ]
@@ -172,6 +173,15 @@
       "note": "3 more Greptile findings (lock TOCTOU, resume completeness, snapshot integrity) fixed; 82/82 unit tests; merged as f48b770",
       "deps": [
         "harness_fixes"
+      ]
+    },
+    {
+      "id": "site_pr",
+      "label": "Site PR\n(Greptile review + merge)",
+      "status": "running",
+      "note": "PR #3 awaiting Greptile",
+      "deps": [
+        "site_scaffold"
       ]
     }
   ]
