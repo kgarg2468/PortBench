@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PortBench — how well do frontier models translate Python to Rust?</title>
+<meta name="description" content="PortBench runs frontier AI models against the 108 Python-to-Rust translation tasks of RustRepoTrans (SYSUSELab), each verified by the project's own test suite. Leaderboard, failure taxonomy, repair-round analysis and a gallery of real compiler rejections.">
+<meta name="color-scheme" content="dark">
+<link rel="stylesheet" href="css/portbench.css">
+<!--
+  Static site. No framework, no build step, no bundler.
+
+  Data:  every number comes from JSON under site/data/, resolved through
+         site/data/manifest.json. Publishing real results is a data-only
+         change: drop files into site/data/real/ and flip "dataset" in the
+         manifest. No code edit, no redeploy logic.
+
+  file://  browsers block fetch() against file:// origins (opaque origin, CORS).
+           Serve the directory instead — from site/:
+               python3 -m http.server 8000
+           then open http://localhost:8000/ . Opening index.html directly still
+           renders the shell and shows an explicit instruction panel rather than
+           failing silently. Any static host (GitHub Pages included) works as-is.
+-->
+</head>
+<body>
+
+<div id="sample-banner" hidden>
+  <div class="wrap">
+    <span class="tag">Sample data</span>
+    <p id="sample-banner-text">Placeholder numbers for layout only. No model run has happened yet — nothing here is a measurement.</p>
+  </div>
+</div>
+
+<header class="masthead">
+  <div class="wrap">
+    <div class="brand">
+      <h1>Port<span>Bench</span></h1>
+      <span class="slug">py&nbsp;→&nbsp;rs</span>
+    </div>
+
+    <div class="herogrid">
+      <h2 class="hero">What actually happens when a model writes <em>Rust</em>?</h2>
+      <p class="hero-sub">
+        Every frontier model can produce Rust that looks right. PortBench asks the only question that
+        settles it: <strong>does it compile, and do the project's own tests still pass?</strong>
+        108 repository-level Python&nbsp;→&nbsp;Rust translation tasks from
+        <a href="https://github.com/SYSUSELab/RustRepoTrans">RustRepoTrans</a>, three real crates,
+        one shot each — then one repair round where the model is shown the compiler error it earned.
+      </p>
+    </div>
+
+    <div class="statstrip" id="statstrip" aria-label="Run summary"></div>
+  </div>
+</header>
+
+<nav class="secnav" aria-label="Sections">
+  <div class="wrap">
+    <a href="#leaderboard"><b>01</b> Leaderboard</a>
+    <a href="#taxonomy"><b>02</b> Failure taxonomy</a>
+    <a href="#repair"><b>03</b> Repair round</a>
+    <a href="#gallery"><b>04</b> Gallery</a>
+    <a href="#trend"><b>05</b> Trend</a>
+    <a href="#about"><b>06</b> Method</a>
+    <a class="repo" href="https://github.com/kgarg2468/PortBench">GitHub&nbsp;↗</a>
+  </div>
+</nav>
+
+<main>
+
+  <!-- 01 ------------------------------------------------------------------ -->
+  <section id="leaderboard">
+    <div class="wrap">
+      <div class="sechead">
+        <div class="rail"><span class="no">01</span><span class="tick"></span></div>
+        <h3>Leaderboard</h3>
+        <p>
+          Share of the 108 tasks that compile <em>and</em> pass the project's real test suite.
+          The solid bar is one-shot; the hatched extension is what the model recovers when it is
+          handed its own compiler error once. Cost is total spend divided by tasks actually solved —
+          the only cost number that means anything. Click any row for the per-project and per-verdict split.
+        </p>
+      </div>
+      <div id="board-mount" class="loading">Loading leaderboard…</div>
+    </div>
+  </section>
+
+  <!-- 02 ------------------------------------------------------------------ -->
+  <section id="taxonomy">
+    <div class="wrap">
+      <div class="sechead">
+        <div class="rail"><span class="no">02</span><span class="tick"></span></div>
+        <h3>What kills the Rust</h3>
+        <p>
+          Every failed attempt, bucketed once. Compile failures are keyed off the rustc error codes
+          the build emitted; test-logic failures compiled cleanly and were wrong anyway. The shape
+          barely moves across the eight models — only the length does.
+        </p>
+      </div>
+      <div id="taxonomy-mount" class="loading">Loading taxonomy…</div>
+    </div>
+  </section>
+
+  <!-- 03 ------------------------------------------------------------------ -->
+  <section id="repair">
+    <div class="wrap">
+      <div class="sechead">
+        <div class="rail"><span class="no">03</span><span class="tick"></span></div>
+        <h3>The repair round</h3>
+        <p>
+          Every failed task gets exactly one more turn, with the compiler or test output pasted back
+          in. No tools, no test loop, no human. This is the cheapest possible agentic step — so it is
+          a clean read on how much of the gap is careless versus conceptual.
+        </p>
+      </div>
+      <div id="repair-mount" class="loading">Loading repair analysis…</div>
+    </div>
+  </section>
+
+  <!-- 04 ------------------------------------------------------------------ -->
+  <section id="gallery">
+    <div class="wrap">
+      <div class="sechead">
+        <div class="rail"><span class="no">04</span><span class="tick"></span></div>
+        <h3>Failure gallery</h3>
+        <p>
+          Model output on the left, the thing that rejected it on the right. Aggregates hide what the
+          failures actually look like; these do not.
+        </p>
+      </div>
+      <div id="gallery-mount" class="loading">Loading gallery…</div>
+    </div>
+  </section>
+
+  <!-- 05 ------------------------------------------------------------------ -->
+  <section id="trend">
+    <div class="wrap">
+      <div class="sechead">
+        <div class="rail"><span class="no">05</span><span class="tick"></span></div>
+        <h3>Is this getting better?</h3>
+        <p>
+          One point per full sweep. The frontier line is the best model on that date; the median line
+          is the whole field. The model set is not constant across sweeps, so read the slope, not the
+          gap between the two lines.
+        </p>
+      </div>
+      <div id="trend-mount" class="loading">Loading trend…</div>
+    </div>
+  </section>
+
+</main>
+
+<!-- 06 -------------------------------------------------------------------- -->
+<footer id="about">
+  <div class="wrap">
+    <div class="sechead abouthead">
+      <div class="rail"><span class="no">06</span><span class="tick"></span></div>
+      <h3>Method &amp; credit</h3>
+    </div>
+
+    <div class="aboutgrid">
+      <div>
+        <h4>Method, in five sentences</h4>
+        <ol>
+          <li>Each model gets one shot per task: the Python source function, the target Rust
+            signature, and the surrounding declarations and <code>use</code> lines — no tools, no
+            retrieval, no test access.</li>
+          <li>If the attempt fails, it gets exactly one repair round in which the compiler or test
+            output is handed back, and nothing else changes.</li>
+          <li>The emitted function is spliced into the real crate and the project's own test suite is
+            run — <code>cargo test --workspace --no-fail-fast</code>, or <code>make unit-test</code>
+            for iceberg.</li>
+          <li>Tests that already fail on the untouched tree are subtracted per project via a baseline
+            allowlist, so a flaky mDNS or DNS test in libp2p can never be charged to a model.</li>
+          <li>A task counts as solved only when it compiles and every non-baseline test passes;
+            everything else is bucketed by verdict and by rustc error code.</li>
+        </ol>
+      </div>
+
+      <div>
+        <div class="credit">
+          <h4>Dataset credit</h4>
+          <p>
+            The 108 tasks are the Python&nbsp;→&nbsp;Rust slice of
+            <strong><a href="https://github.com/SYSUSELab/RustRepoTrans">RustRepoTrans</a></strong>,
+            a repository-level code translation benchmark targeting Rust, by
+            <strong>SYSUSELab</strong>. The task selection, the paired functions, the dependency
+            context and the choice of projects are entirely their work.
+          </p>
+          <p>
+            PortBench adds only the harness, the current-model runs, the taxonomy and this site.
+            The benchmark is cloned at run time and treated as read-only input — it is never
+            vendored or redistributed here.
+          </p>
+          <p>
+            Upstream projects under test:
+            <a href="https://github.com/apache/iceberg-rust">iceberg-rust</a> (Apache-2.0),
+            <a href="https://github.com/libp2p/rust-libp2p">rust-libp2p</a> (MIT/Apache-2.0),
+            <a href="https://github.com/nickspring/charset-normalizer-rs">charset-normalizer-rs</a> (MIT).
+          </p>
+        </div>
+
+        <div style="margin-top:32px">
+          <h4>Reading the numbers</h4>
+          <p>
+            <strong>One-shot</strong> is pass@1 with a single sample — not best-of-n. A model that is
+            merely inconsistent will look worse here than one that is confidently mediocre, which is
+            the intended bias: this measures whether the first answer ships.
+          </p>
+          <p>
+            <strong>Cost per solved task</strong> divides total spend across all attempts, repair
+            round included, by the number of tasks solved. Unsolved work is not free and is not
+            excluded.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div class="colophon">
+      <span class="eyebrow">PortBench · results are versioned JSON in the repo · <a href="https://github.com/kgarg2468/PortBench">github.com/kgarg2468/PortBench</a></span>
+      <span class="eyebrow" id="colophon-run">—</span>
+    </div>
+  </div>
+</footer>
+
+<script src="js/highlight.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,189 @@
+{
+  "sample": true,
+  "schema": "portbench.leaderboard/1",
+  "comment": "Aggregate of the harness JSONL (one record per model x task x attempt). Counts only -- the site derives every rate, lift and cost so there is exactly one source of truth. INVENTED SAMPLE DATA.",
+  "run_id": "sample-sweep-2026-08-18",
+  "generated": "2026-08-18T09:00:00Z",
+  "dataset": {
+    "name": "RustRepoTrans (python -> rust slice)",
+    "source": "https://github.com/SYSUSELab/RustRepoTrans",
+    "commit": "0000000000000000000000000000000000000000",
+    "tasks_total": 108,
+    "projects": {
+      "charset-normalizer": 33,
+      "iceberg": 44,
+      "libp2p": 31
+    }
+  },
+  "verdict_order": ["PASS", "COMPILE_ERROR", "TEST_FAIL", "EXTRACTION_ERROR", "TRANSPORT_ERROR", "TIMEOUT"],
+  "models": [
+    {
+      "model": "fable-5",
+      "label": "Claude Fable 5",
+      "family": "claude",
+      "tasks_attempted": 108,
+      "passed_oneshot": 46,
+      "passed_after_repair": 57,
+      "verdicts": {
+        "attempt_0": { "PASS": 46, "COMPILE_ERROR": 41, "TEST_FAIL": 18, "EXTRACTION_ERROR": 1, "TRANSPORT_ERROR": 1, "TIMEOUT": 1 },
+        "attempt_1": { "PASS": 11, "COMPILE_ERROR": 34, "TEST_FAIL": 16, "EXTRACTION_ERROR": 1, "TRANSPORT_ERROR": 0, "TIMEOUT": 0 }
+      },
+      "by_project": {
+        "charset-normalizer": { "n": 33, "passed_oneshot": 17, "passed_after_repair": 20 },
+        "iceberg": { "n": 44, "passed_oneshot": 15, "passed_after_repair": 19 },
+        "libp2p": { "n": 31, "passed_oneshot": 14, "passed_after_repair": 18 }
+      },
+      "tokens": { "in": 255000, "out": 442000 },
+      "price_per_mtok_usd": { "in": 15.0, "out": 75.0 },
+      "duration_s_total": 19040,
+      "duration_s_median": 96
+    },
+    {
+      "model": "gpt-5.6-sol",
+      "label": "GPT-5.6 Sol",
+      "family": "gpt",
+      "tasks_attempted": 108,
+      "passed_oneshot": 44,
+      "passed_after_repair": 55,
+      "verdicts": {
+        "attempt_0": { "PASS": 44, "COMPILE_ERROR": 43, "TEST_FAIL": 18, "EXTRACTION_ERROR": 1, "TRANSPORT_ERROR": 1, "TIMEOUT": 1 },
+        "attempt_1": { "PASS": 11, "COMPILE_ERROR": 35, "TEST_FAIL": 17, "EXTRACTION_ERROR": 1, "TRANSPORT_ERROR": 0, "TIMEOUT": 0 }
+      },
+      "by_project": {
+        "charset-normalizer": { "n": 33, "passed_oneshot": 16, "passed_after_repair": 20 },
+        "iceberg": { "n": 44, "passed_oneshot": 15, "passed_after_repair": 19 },
+        "libp2p": { "n": 31, "passed_oneshot": 13, "passed_after_repair": 16 }
+      },
+      "tokens": { "in": 258000, "out": 412800 },
+      "price_per_mtok_usd": { "in": 6.0, "out": 30.0 },
+      "duration_s_total": 17888,
+      "duration_s_median": 91
+    },
+    {
+      "model": "opus-5",
+      "label": "Claude Opus 5",
+      "family": "claude",
+      "tasks_attempted": 108,
+      "passed_oneshot": 41,
+      "passed_after_repair": 52,
+      "verdicts": {
+        "attempt_0": { "PASS": 41, "COMPILE_ERROR": 45, "TEST_FAIL": 19, "EXTRACTION_ERROR": 2, "TRANSPORT_ERROR": 1, "TIMEOUT": 0 },
+        "attempt_1": { "PASS": 11, "COMPILE_ERROR": 37, "TEST_FAIL": 18, "EXTRACTION_ERROR": 1, "TRANSPORT_ERROR": 0, "TIMEOUT": 0 }
+      },
+      "by_project": {
+        "charset-normalizer": { "n": 33, "passed_oneshot": 15, "passed_after_repair": 19 },
+        "iceberg": { "n": 44, "passed_oneshot": 14, "passed_after_repair": 18 },
+        "libp2p": { "n": 31, "passed_oneshot": 12, "passed_after_repair": 15 }
+      },
+      "tokens": { "in": 262500, "out": 385000 },
+      "price_per_mtok_usd": { "in": 5.0, "out": 25.0 },
+      "duration_s_total": 17675,
+      "duration_s_median": 89
+    },
+    {
+      "model": "gpt-5.6-terra",
+      "label": "GPT-5.6 Terra",
+      "family": "gpt",
+      "tasks_attempted": 108,
+      "passed_oneshot": 36,
+      "passed_after_repair": 46,
+      "verdicts": {
+        "attempt_0": { "PASS": 36, "COMPILE_ERROR": 50, "TEST_FAIL": 19, "EXTRACTION_ERROR": 2, "TRANSPORT_ERROR": 1, "TIMEOUT": 0 },
+        "attempt_1": { "PASS": 10, "COMPILE_ERROR": 42, "TEST_FAIL": 19, "EXTRACTION_ERROR": 1, "TRANSPORT_ERROR": 0, "TIMEOUT": 0 }
+      },
+      "by_project": {
+        "charset-normalizer": { "n": 33, "passed_oneshot": 14, "passed_after_repair": 18 },
+        "iceberg": { "n": 44, "passed_oneshot": 12, "passed_after_repair": 15 },
+        "libp2p": { "n": 31, "passed_oneshot": 10, "passed_after_repair": 13 }
+      },
+      "tokens": { "in": 270000, "out": 342000 },
+      "price_per_mtok_usd": { "in": 1.75, "out": 9.0 },
+      "duration_s_total": 16920,
+      "duration_s_median": 84
+    },
+    {
+      "model": "sonnet-5",
+      "label": "Claude Sonnet 5",
+      "family": "claude",
+      "tasks_attempted": 108,
+      "passed_oneshot": 33,
+      "passed_after_repair": 42,
+      "verdicts": {
+        "attempt_0": { "PASS": 33, "COMPILE_ERROR": 54, "TEST_FAIL": 18, "EXTRACTION_ERROR": 2, "TRANSPORT_ERROR": 1, "TIMEOUT": 0 },
+        "attempt_1": { "PASS": 9, "COMPILE_ERROR": 46, "TEST_FAIL": 18, "EXTRACTION_ERROR": 2, "TRANSPORT_ERROR": 0, "TIMEOUT": 0 }
+      },
+      "by_project": {
+        "charset-normalizer": { "n": 33, "passed_oneshot": 13, "passed_after_repair": 16 },
+        "iceberg": { "n": 44, "passed_oneshot": 11, "passed_after_repair": 15 },
+        "libp2p": { "n": 31, "passed_oneshot": 9, "passed_after_repair": 11 }
+      },
+      "tokens": { "in": 274500, "out": 311100 },
+      "price_per_mtok_usd": { "in": 3.0, "out": 15.0 },
+      "duration_s_total": 16836,
+      "duration_s_median": 83
+    },
+    {
+      "model": "gpt-5.6-luna",
+      "label": "GPT-5.6 Luna",
+      "family": "gpt",
+      "tasks_attempted": 108,
+      "passed_oneshot": 27,
+      "passed_after_repair": 35,
+      "verdicts": {
+        "attempt_0": { "PASS": 27, "COMPILE_ERROR": 60, "TEST_FAIL": 17, "EXTRACTION_ERROR": 3, "TRANSPORT_ERROR": 1, "TIMEOUT": 0 },
+        "attempt_1": { "PASS": 8, "COMPILE_ERROR": 53, "TEST_FAIL": 18, "EXTRACTION_ERROR": 2, "TRANSPORT_ERROR": 0, "TIMEOUT": 0 }
+      },
+      "by_project": {
+        "charset-normalizer": { "n": 33, "passed_oneshot": 11, "passed_after_repair": 14 },
+        "iceberg": { "n": 44, "passed_oneshot": 9, "passed_after_repair": 12 },
+        "libp2p": { "n": 31, "passed_oneshot": 7, "passed_after_repair": 9 }
+      },
+      "tokens": { "in": 283500, "out": 264600 },
+      "price_per_mtok_usd": { "in": 0.35, "out": 1.75 },
+      "duration_s_total": 16632,
+      "duration_s_median": 79
+    },
+    {
+      "model": "gpt-5.5",
+      "label": "GPT-5.5",
+      "family": "gpt",
+      "tasks_attempted": 108,
+      "passed_oneshot": 24,
+      "passed_after_repair": 31,
+      "verdicts": {
+        "attempt_0": { "PASS": 24, "COMPILE_ERROR": 63, "TEST_FAIL": 17, "EXTRACTION_ERROR": 3, "TRANSPORT_ERROR": 1, "TIMEOUT": 0 },
+        "attempt_1": { "PASS": 7, "COMPILE_ERROR": 57, "TEST_FAIL": 18, "EXTRACTION_ERROR": 2, "TRANSPORT_ERROR": 0, "TIMEOUT": 0 }
+      },
+      "by_project": {
+        "charset-normalizer": { "n": 33, "passed_oneshot": 10, "passed_after_repair": 13 },
+        "iceberg": { "n": 44, "passed_oneshot": 8, "passed_after_repair": 11 },
+        "libp2p": { "n": 31, "passed_oneshot": 6, "passed_after_repair": 7 }
+      },
+      "tokens": { "in": 288000, "out": 230400 },
+      "price_per_mtok_usd": { "in": 3.0, "out": 15.0 },
+      "duration_s_total": 17280,
+      "duration_s_median": 81
+    },
+    {
+      "model": "haiku-4.5",
+      "label": "Claude Haiku 4.5",
+      "family": "claude",
+      "tasks_attempted": 108,
+      "passed_oneshot": 18,
+      "passed_after_repair": 24,
+      "verdicts": {
+        "attempt_0": { "PASS": 18, "COMPILE_ERROR": 68, "TEST_FAIL": 17, "EXTRACTION_ERROR": 4, "TRANSPORT_ERROR": 1, "TIMEOUT": 0 },
+        "attempt_1": { "PASS": 6, "COMPILE_ERROR": 63, "TEST_FAIL": 18, "EXTRACTION_ERROR": 3, "TRANSPORT_ERROR": 0, "TIMEOUT": 0 }
+      },
+      "by_project": {
+        "charset-normalizer": { "n": 33, "passed_oneshot": 8, "passed_after_repair": 11 },
+        "iceberg": { "n": 44, "passed_oneshot": 6, "passed_after_repair": 8 },
+        "libp2p": { "n": 31, "passed_oneshot": 4, "passed_after_repair": 5 }
+      },
+      "tokens": { "in": 297000, "out": 217800 },
+      "price_per_mtok_usd": { "in": 1.0, "out": 5.0 },
+      "duration_s_total": 16830,
+      "duration_s_median": 76
+    }
+  ]
+}
