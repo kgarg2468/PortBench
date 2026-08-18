@@ -1,6 +1,6 @@
 {
   "project": "PortBench",
-  "updated": "2026-08-18T19:10:00Z",
+  "updated": "2026-08-18T19:45:00Z",
   "nodes": [
     {
       "id": "spike",
@@ -190,8 +190,8 @@
     {
       "id": "aggregator",
       "label": "Aggregator\n(JSONL -> site data + taxonomy)",
-      "status": "running",
-      "note": "PR #4 open: 38/38 tests, deterministic. Real dry run: fable 79/90, opus 82/95 (12 no-data), sol 58/82, terra 55/77. VERIFIED: zero borrow-checker codes in all raw data \u2014 headline inverts. 2 Greptile fixes in flight.",
+      "status": "done",
+      "note": "PR #4 merged (64d4e65): 46/46 tests, TIMEOUT-in-denominator + null-cost fixes. Zero-borrowck finding verified on raw data.",
       "deps": [
         "calibration",
         "site_pr"
@@ -209,8 +209,8 @@
     {
       "id": "gallery_capture",
       "label": "Gallery capture\n(--keep-artifacts + subset rerun)",
-      "status": "blocked",
-      "note": "Harness drops model code after scoring; gallery needs artifacts. Add flag + rerun ~15 failed tasks across models.",
+      "status": "running",
+      "note": "Opus worker adding --keep-artifacts (PR #5, worktree \u2014 merges after lanes finish); then ~15-task subset rerun for real gallery code",
       "deps": [
         "aggregator"
       ]
