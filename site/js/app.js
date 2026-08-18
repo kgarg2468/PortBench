@@ -21,7 +21,10 @@
 
   function pct(x, digits) { return (x * 100).toFixed(digits === undefined ? 1 : digits) + "%"; }
 
-  function money(v) { return "$" + (v < 1 ? v.toFixed(3) : v.toFixed(2)); }
+  function money(v) {
+    if (v === null || !isFinite(v)) return "—";
+    return "$" + (v < 1 ? v.toFixed(3) : v.toFixed(2));
+  }
 
   function intFmt(v) { return Math.round(v).toLocaleString("en-US"); }
 
@@ -42,6 +45,7 @@
   /* Round a max up to a readable axis bound with ~5-6 ticks. */
   function niceScale(max, targetTicks) {
     var ticks = targetTicks || 6;
+    if (!(max > 0)) return { max: 1, ticks: [0, 1], step: 1 };
     var raw = max / (ticks - 1);
     var mag = Math.pow(10, Math.floor(Math.log(raw) / Math.LN10));
     var step = [1, 2, 2.5, 5, 10].reduce(function (best, m) {
@@ -171,7 +175,7 @@
       liftPP: (m.passed_after_repair - m.passed_oneshot) / n * 100,
       recovery: (m.passed_after_repair - m.passed_oneshot) / (n - m.passed_oneshot),
       cost: cost,
-      costPerSolved: cost / m.passed_after_repair
+      costPerSolved: m.passed_after_repair > 0 ? cost / m.passed_after_repair : null
     };
   }
 
@@ -181,7 +185,8 @@
     var rows = lb.models.map(derive);
     var bestOne = rows.reduce(function (a, b) { return b.oneRate > a.oneRate ? b : a; });
     var bestRep = rows.reduce(function (a, b) { return b.repRate > a.repRate ? b : a; });
-    var cheapest = rows.reduce(function (a, b) { return b.costPerSolved < a.costPerSolved ? b : a; });
+    var priced = rows.filter(function (r) { return r.costPerSolved !== null; });
+    var cheapest = (priced.length ? priced : rows).reduce(function (a, b) { return b.costPerSolved < a.costPerSolved ? b : a; });
     var stats = [
       { v: String(lb.dataset.tasks_total), k: "tasks · python → rust" },
       { v: String(lb.models.length), k: "models evaluated" },
@@ -267,6 +272,8 @@
       rows.sort(function (a, b) {
         var x = a[sort.key], y = b[sort.key];
         if (typeof x === "string") return sort.dir * x.localeCompare(y);
+        if (x === null) x = Infinity;  // unpriced (zero solves) sorts last
+        if (y === null) y = Infinity;
         return sort.dir * (x - y);
       });
 
