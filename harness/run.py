@@ -32,6 +32,11 @@ class RunIdCollision(RuntimeError):
 # Verdicts the repair round acts on. Anything else ends the task at attempt 0.
 REPAIR_ELIGIBLE = (score.COMPILE_ERROR, score.TEST_FAIL, score.SUITE_ERROR)
 
+# A single compiler/test log can run to megabytes (a panicking test in a loop). Artifacts exist
+# to be read in a browser, so error.txt keeps the tail -- rustc and libtest put the failure list
+# and the summary at the end -- up to this cap.
+ARTIFACT_ERROR_LIMIT = 200_000
+
 
 @dataclass
 class AttemptRecord:
@@ -60,6 +65,7 @@ class AttemptRecord:
     leak_stripped: bool = False
     verdict_reason: str = ""
     note: str = ""
+    artifacts_dir: str = ""   # only set (and only emitted) under --keep-artifacts
 
 
 class ResultsWriter:
@@ -72,11 +78,14 @@ class ResultsWriter:
     (task_id, attempt) pairs that are actually missing.
     """
 
-    def __init__(self, out_root: Path, model: str, run_id: str, resume: bool = False):
+    def __init__(self, out_root: Path, model: str, run_id: str, resume: bool = False,
+                 keep_artifacts: bool = False):
         self.dir = Path(out_root) / model
         self.dir.mkdir(parents=True, exist_ok=True)
         self.jsonl = self.dir / f"{run_id}.jsonl"
         self.meta = self.dir / f"{run_id}.meta.json"
+        self.artifacts_root = self.dir / f"{run_id}.artifacts" if keep_artifacts else None
+        self.rel_artifacts_root = f"{model}/{run_id}.artifacts"
         self.resume = resume
         self.existing: dict[tuple[str, int], str] = {}
 
@@ -137,24 +146,60 @@ class ResultsWriter:
         if key in self.existing:
             return                                   # resume: already on record, never duplicate
         self.existing[key] = record.verdict
+        payload = asdict(record)
+        if not payload.get("artifacts_dir"):
+            # Without --keep-artifacts the schema is unchanged, byte for byte.
+            payload.pop("artifacts_dir", None)
         with self.jsonl.open("a", encoding="utf-8") as fh:
-            fh.write(json.dumps(asdict(record), sort_keys=True) + "\n")
+            fh.write(json.dumps(payload, sort_keys=True) + "\n")
 
     def write_meta(self, meta: dict) -> None:
         self.meta.write_text(json.dumps(meta, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    def record_artifacts(self, task_id: str, attempt: int, answer: str,
+                         injected: str | None, error_text: str) -> str:
+        """Persist one attempt's raw answer, injected Rust and failure text.
+
+        Returns the directory path relative to the results root (what goes on the record), or
+        "" when artifacts are off. `injected` is None when extraction failed, so the absence of
+        `injected.rs` is itself the signal that nothing reached the tree.
+        """
+        if self.artifacts_root is None:
+            return ""
+        rel = f"{self.rel_artifacts_root}/{task_id}/attempt{attempt}"
+        out = self.artifacts_root / task_id / f"attempt{attempt}"
+        out.mkdir(parents=True, exist_ok=True)
+        (out / "answer.md").write_text(answer or "", encoding="utf-8", errors="replace")
+        if injected:
+            (out / "injected.rs").write_text(injected, encoding="utf-8", errors="replace")
+        if error_text:
+            (out / "error.txt").write_text(
+                tasks.truncate_error(error_text, ARTIFACT_ERROR_LIMIT),
+                encoding="utf-8", errors="replace")
+        return rel
 
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def evaluate_output(task: Task, model_text: str, dataset: Path,
-                    test_timeout: int) -> tuple[score.Verdict, dict, float]:
+def injected_source(uses: list[str], functions: list[str]) -> str:
+    """The use lines and functions that were injected, as one readable Rust snippet."""
+    blocks = ([("\n".join(uses))] if uses else []) + list(functions)
+    return "\n\n".join(block.strip("\n") for block in blocks) + "\n"
+
+
+def evaluate_output(task: Task, model_text: str, dataset: Path, test_timeout: int,
+                    capture: dict | None = None) -> tuple[score.Verdict, dict, float]:
     """Extract -> inject -> test -> score. Always restores the tree.
 
     Scoring happens *inside* the injection context. It used to run after the `with` block had
     already restored the reference file, so the flaky-retry rerun inside `score.score` was
     re-running the reference implementation rather than the model's.
+
+    `capture`, when given, receives `injected`: the Rust that actually went into the tree. It is
+    the only place that text exists -- the injection is reverted in a `finally` -- so
+    `--keep-artifacts` has to take it from here.
     """
     proj_dir = tasks.project_dir(dataset, task.project)
     try:
@@ -163,6 +208,8 @@ def evaluate_output(task: Task, model_text: str, dataset: Path,
         inject.require_target_function(functions, task)
     except inject.ExtractionError as exc:
         return score.Verdict(score.EXTRACTION_ERROR, error_text=str(exc)), {}, 0.0
+    if capture is not None:
+        capture["injected"] = injected_source(extraction.uses, functions)
 
     try:
         with inject.injected(task, functions, extraction.uses) as info:
@@ -194,8 +241,13 @@ def run_task(task: Task, model: str, run_id: str, dataset: Path, writer: Results
             ))
             return score.TIMEOUT if exc.timed_out else score.TRANSPORT_ERROR
 
-        verdict, info, test_s = evaluate_output(task, result.text, dataset, test_timeout)
+        capture: dict = {}
+        verdict, info, test_s = evaluate_output(task, result.text, dataset, test_timeout,
+                                                capture=capture)
         final_verdict = verdict.verdict
+        artifacts_dir = writer.record_artifacts(
+            task.task_id, attempt, answer=result.text,
+            injected=capture.get("injected"), error_text=verdict.error_text)
         writer.write(AttemptRecord(
             run_id=run_id, model=model, task_id=task.task_id, project=task.project,
             attempt=attempt, verdict=verdict.verdict, failing_tests=verdict.failing_tests,
@@ -212,6 +264,7 @@ def run_task(task: Task, model: str, run_id: str, dataset: Path, writer: Results
             resolved_model=result.resolved_model,
             leak_stripped=task.leak_stripped,
             verdict_reason=verdict.reason,
+            artifacts_dir=artifacts_dir,
         ))
         print(f"  attempt={attempt} {verdict.verdict} "
               f"{','.join(verdict.failing_tests[:3])}"
@@ -280,7 +333,8 @@ def cmd_run(args) -> int:
 
     # Fail on a run-id collision before taking the lock or touching the tree.
     try:
-        writer = ResultsWriter(Path(args.out), args.model, run_id, resume=args.resume)
+        writer = ResultsWriter(Path(args.out), args.model, run_id, resume=args.resume,
+                               keep_artifacts=args.keep_artifacts)
     except RunIdCollision as exc:
         print(f"refusing to start: {exc}", file=sys.stderr)
         return 2
@@ -329,6 +383,7 @@ def cmd_run(args) -> int:
                 "model_timeout_s": args.model_timeout, "test_timeout_s": args.test_timeout,
                 "repair_round": not args.no_repair,
                 "resume": bool(args.resume),
+                "keep_artifacts": bool(args.keep_artifacts),
                 "test_commands": score.TEST_COMMANDS,
                 "expected_summaries": expected.load(),
                 "model_calls_isolated": True,
@@ -352,6 +407,8 @@ def cmd_run(args) -> int:
         writer.write_meta(meta)
         print(f"\n{run_id}: " + "  ".join(f"{k}={v}" for k, v in sorted(tally.items())))
         print(f"results -> {writer.jsonl}")
+        if writer.artifacts_root is not None:
+            print(f"artifacts -> {writer.artifacts_root}")
         return 0
     finally:
         lock.release(dataset)
@@ -475,6 +532,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-repair", action="store_true", help="skip the repair round")
     p.add_argument("--resume", action="store_true",
                    help="append to an existing run id, skipping attempts already recorded")
+    p.add_argument("--keep-artifacts", action="store_true",
+                   help="write each attempt's raw answer, injected Rust and error text under "
+                        "results/<model>/<run_id>.artifacts/<task_id>/attempt<k>/")
     p.add_argument("--calibrate", action="store_true",
                    help="inject unimplemented!() into the selected tasks and report whether "
                         "the suite notices; no model calls")

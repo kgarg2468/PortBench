@@ -114,6 +114,7 @@ python -m harness.run --model fable --tasks 'projects__libp2p__*ecdsa*' --run-id
 | `--run-id` | caller-supplied id; defaults to a UTC timestamp. Refused if results already exist |
 | `--resume` | append to an existing run id, skipping (task_id, attempt) pairs already recorded |
 | `--no-repair` | one-shot only, skip the repair round |
+| `--keep-artifacts` | also save each attempt's raw answer, injected Rust and error text (see [Artifacts](#artifacts)) |
 | `--calibrate` | inject `unimplemented!()` into the selected tasks and report whether the suite notices; no model calls |
 | `--snapshot-targets` | record each project's test-target summary count on the unmodified tree |
 | `--force-snapshot` | allow `--snapshot-targets` to *lower* an already recorded count |
@@ -307,6 +308,18 @@ files, so a result is reproducible without us ever copying task text into this r
 time, the exact test commands, the exact model argv, the recorded test-target counts, and the
 leak-stripped / leak-excluded task ids.
 
+### Artifacts
+
+Scoring is destructive: the injection is reverted in a `finally`, so by the time a verdict is
+written the model's Rust no longer exists anywhere. `--keep-artifacts` saves it first, one
+directory per attempt under `results/<model>/<run_id>.artifacts/<task_id>/attempt<k>/`:
+`answer.md` (the raw model response), `injected.rs` (the extracted functions and `use` lines
+exactly as they went into the tree — absent on `EXTRACTION_ERROR`, since nothing was injected)
+and `error.txt` (the compiler / test output behind the verdict, tail-truncated at 200 KB, absent
+on `PASS`). Records from such a run carry an extra `artifacts_dir` field holding that path
+relative to `--out`; the flag is off by default and adds nothing to the JSONL when unset. This is
+what the failure gallery reads, so a run meant to feed it needs the flag set.
+
 **Reasoning settings are each CLI's out-of-the-box default.** Fairness here means "what you get
 when you type the command", not a tuned configuration. The exact argv is recorded in the meta
 file, and the concrete model id the CLI resolved the alias to is on every attempt record.
@@ -356,7 +369,9 @@ exit 0 must never `PASS`; the same test name failing in two binaries must not re
 mismatch; an answer without the requested function must be rejected; a dependency block quoting
 the answer must be stripped exactly; a duplicated anchor must resolve by ordinal; an existing
 run id must be refused; a second runner must be locked out (and a dead holder's lock reclaimed);
-and each codex JSONL token/message shape must parse.
+and each codex JSONL token/message shape must parse. It also drives a whole task through
+`run_task` with a fake model CLI and a fake cargo to pin the `--keep-artifacts` layout, and to
+prove the default run writes no artifacts and no extra JSONL field.
 
 `--self-test` feeds each task's own reference Rust function back through the complete
 extract → inject → test → score path as if a model had emitted it, for two small tasks per
