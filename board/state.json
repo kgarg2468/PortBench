@@ -1,6 +1,6 @@
 {
   "project": "PortBench",
-  "updated": "2026-08-18T15:55:00Z",
+  "updated": "2026-08-18T18:20:00Z",
   "nodes": [
     {
       "id": "spike",
@@ -59,7 +59,7 @@
       "id": "run_claude",
       "label": "Full run: Claude family",
       "status": "running",
-      "note": "Lane A on dataset/: fable -> opus -> sonnet -> haiku, 108 tasks each, one-shot + repair. Est. 13-17h.",
+      "note": "fable DONE 86/108 one-shot +12 repair. opus DONE 80 one-shot but 12 TRANSPORT_ERROR (API overload) -> backfill needed. sonnet mid-run, haiku queued.",
       "deps": [
         "smoke",
         "gpt_review",
@@ -71,7 +71,7 @@
       "id": "run_gpt",
       "label": "Full run: GPT family",
       "status": "running",
-      "note": "Lane B on dataset2/ (APFS clone): sol -> terra -> luna -> gpt-5.5. Est. 13-17h.",
+      "note": "sol DONE 62 one-shot +28 repair (83% w/ repair). terra DONE 49+21. luna running, gpt-5.5 queued.",
       "deps": [
         "smoke",
         "gpt_review",
@@ -86,7 +86,9 @@
       "note": "Headline chart + repair-fix rate + cost-per-solved-task",
       "deps": [
         "run_claude",
-        "run_gpt"
+        "run_gpt",
+        "aggregator",
+        "backfill_transport"
       ]
     },
     {
@@ -182,6 +184,25 @@
       "note": "Greptile: 2 findings (zero-scale render loop, $Infinity cost) \u2014 fixed by orchestrator, verified in browser, merged as 21c9fa4",
       "deps": [
         "site_scaffold"
+      ]
+    },
+    {
+      "id": "aggregator",
+      "label": "Aggregator\n(JSONL -> site data + taxonomy)",
+      "status": "running",
+      "note": "Opus worker: results/*.jsonl + exclusions.json -> leaderboard/taxonomy/trend/gallery JSON; rustc-code bucket map",
+      "deps": [
+        "calibration",
+        "site_pr"
+      ]
+    },
+    {
+      "id": "backfill_transport",
+      "label": "Transport backfill\n(rerun API-overload tasks)",
+      "status": "blocked",
+      "note": "12 opus tasks (+1 repair) hit TRANSPORT_ERROR; rerun targeted, merge in aggregation",
+      "deps": [
+        "run_claude"
       ]
     }
   ]
