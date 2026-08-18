@@ -33,10 +33,38 @@ uv run --with-requirements harness/requirements.txt python -m harness.run --list
 Also required on PATH: `cargo`/`rustc` (stable 1.95), `make` (for iceberg), and whichever model
 CLI you are benchmarking (`claude`, `codex`).
 
+## ⚠️ Security: this harness compiles and runs model-generated code
+
+**PortBench writes model output into a real Rust project and runs its test suite on your
+machine, as you, with your privileges.** That is the whole point of the benchmark — you cannot
+tell whether a translation works without executing it — but it means a hostile or
+prompt-injected model response can run arbitrary code: `build.rs` scripts, proc macros and test
+bodies all execute during `cargo test`. Treat every run as executing untrusted code.
+
+What the harness does do:
+
+- **The test subprocess gets a scrubbed environment.** Only an allowlist is forwarded (`PATH`,
+  `HOME`, `TMPDIR`, `TERM`, `USER`, `LOGNAME`, `SHELL`, `LANG`, `LC_ALL`, `CARGO_HOME`,
+  `RUSTUP_HOME`, `RUSTUP_TOOLCHAIN`, `RUST_BACKTRACE`, `SDKROOT`, `DEVELOPER_DIR`), so API keys,
+  cloud credentials and tokens sitting in the parent environment are **not** inherited by
+  generated code. Add more with `PORTBENCH_EXTRA_ENV=NAME1,NAME2` if a project needs them.
+- Prompts are passed to model CLIs via a temp file on stdin, never interpolated into a shell
+  command line, and no shell is ever spawned.
+- The injected file is always restored, including after a crash.
+
+What it does **not** do: filesystem, network or process isolation. Full sandboxing is out of
+scope for a local benchmark harness — the environment scrub is a credential-exposure mitigation,
+not a containment boundary.
+
+**Run this on a dedicated or otherwise trusted machine, or inside a container/VM**, especially
+when benchmarking models you do not control. Do not run it on a workstation holding production
+credentials or with an authenticated cloud CLI session.
+
 ## Usage
 
 ```bash
 python -m harness.run --list                       # index tasks, print the 108 count
+python -m harness.run --unit-test                  # parser/verdict tests, no cargo, no dataset
 python -m harness.run --self-test                  # validate the machinery, zero model calls
 python -m harness.run --baseline libp2p            # snapshot pre-existing test failures
 python -m harness.run --model opus --run-id r1     # full sweep, 108 tasks
@@ -82,13 +110,27 @@ shares one warm `target/`; running two at once corrupts both.
 | `PASS` | no failing test outside the baseline allowlist |
 | `COMPILE_ERROR` | cargo reported `could not compile`; rustc codes captured |
 | `TEST_FAIL` | at least one non-baseline test failed |
+| `SUITE_ERROR` | the test command exited nonzero and the parsed output does not explain why (see below) |
 | `EXTRACTION_ERROR` | no Rust function in the response, or the anchor was not found |
 | `TRANSPORT_ERROR` | model CLI crashed or returned unparseable output (retried once first) |
 | `TIMEOUT` | model call or test run exceeded its timeout |
 
+#### Reconciling nonzero exits
+
+A test binary that segfaults or aborts prints **no** `test result:` summary and **no**
+`test <name> ... FAILED` line, yet cargo still exits nonzero. Scoring purely on parsed output
+would call that suite `PASS`. So every nonzero exit is reconciled against what was actually
+reported — summary failure counts must match the named failures, and cargo's per-target
+`error: test failed` count must match the number of `FAILED` summaries. If the exit code is not
+fully explained, the verdict is `SUITE_ERROR` and `verdict_reason` says why; `PASS` is never
+reachable from a nonzero exit that we cannot account for.
+
+The common nonzero-but-fine case still passes: cargo exits 101 because allowlisted baseline
+tests failed, and every one of them was both named and summarised.
+
 ### Repair round
 
-On `COMPILE_ERROR` or `TEST_FAIL` the same model gets one follow-up: the original prompt, its own
+On `COMPILE_ERROR`, `TEST_FAIL` or `SUITE_ERROR` the same model gets one follow-up: the original prompt, its own
 previous answer, and the compiler/test output truncated to the last ~8k chars (rustc puts the
 summary at the end). Re-inject, re-score. Both attempts are recorded — `attempt=0` is one-shot,
 `attempt=1` is post-repair — so pass@1 and pass@1-with-repair are both derivable.
@@ -140,7 +182,13 @@ Three further deliberate differences:
 - **Newline normalisation.** The benchmark `.txt` files are CRLF; the `.rs` sources are read with
   universal newlines. Without normalising, *zero* of the 108 anchors match.
 
-## Self-test
+## Tests
+
+`--unit-test` (`harness/tests.py`) exercises the output parser and the verdict function against
+synthetic cargo output — no cargo, no dataset, no model, runs in well under a second. It covers
+each verdict class plus the regressions that matter: a nonzero exit whose failures are all
+allowlisted must still `PASS`, and a binary that crashes without printing a `FAILED` line must
+never `PASS`.
 
 `--self-test` feeds each task's own reference Rust function back through the complete
 extract → inject → test → score path as if a model had emitted it, for two small tasks per

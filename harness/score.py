@@ -31,6 +31,7 @@ DEFAULT_TEST_TIMEOUT = 1800
 PASS = "PASS"
 COMPILE_ERROR = "COMPILE_ERROR"
 TEST_FAIL = "TEST_FAIL"
+SUITE_ERROR = "SUITE_ERROR"
 EXTRACTION_ERROR = "EXTRACTION_ERROR"
 TRANSPORT_ERROR = "TRANSPORT_ERROR"
 TIMEOUT = "TIMEOUT"
@@ -40,6 +41,13 @@ _SUMMARY_RE = re.compile(
     r"^test result: (ok|FAILED)\. (\d+) passed; (\d+) failed; (\d+) ignored", re.M
 )
 _ERROR_CODE_RE = re.compile(r"error\[(E\d{4})\]")
+# cargo prints one of these per test target that did not come back clean.
+_CARGO_TEST_FAILED_RE = re.compile(r"^error: test failed", re.M)
+# A binary that segfaults/aborts never prints a `test result:` summary at all.
+_ABORT_RE = re.compile(
+    r"^error: (?:process didn't exit successfully|could not execute process|"
+    r"test process (?:aborted|exited)|Failed to execute)", re.M
+)
 
 
 @dataclass
@@ -60,10 +68,31 @@ class Verdict:
     summaries: list[tuple[str, int, int, int]] = field(default_factory=list)
     baselined: list[str] = field(default_factory=list)
     flaky_recovered: list[str] = field(default_factory=list)
+    reason: str = ""
+
+
+# The test command compiles and runs MODEL-GENERATED code. We cannot sandbox it here (see the
+# security note in harness/README.md), but we can refuse to hand it the parent process's
+# secrets: only this allowlist is forwarded, so API keys, tokens and cloud credentials sitting
+# in the harness environment are not inherited by the test subprocess.
+ENV_ALLOWLIST = (
+    "PATH", "HOME", "TMPDIR", "TERM", "USER", "LOGNAME", "SHELL", "LANG", "LC_ALL",
+    "CARGO_HOME", "RUSTUP_HOME", "RUSTUP_TOOLCHAIN", "RUST_BACKTRACE",
+    "SDKROOT", "DEVELOPER_DIR",  # macOS linking
+)
+
+# Escape hatch for projects that genuinely need another variable, e.g.
+# PORTBENCH_EXTRA_ENV=SSL_CERT_FILE,HTTPS_PROXY
+EXTRA_ENV_VAR = "PORTBENCH_EXTRA_ENV"
 
 
 def _env() -> dict[str, str]:
-    env = os.environ.copy()
+    allowed = list(ENV_ALLOWLIST)
+    for name in os.environ.get(EXTRA_ENV_VAR, "").split(","):
+        name = name.strip()
+        if name:
+            allowed.append(name)
+    env = {k: os.environ[k] for k in allowed if k in os.environ}
     env["CARGO_TERM_COLOR"] = "never"
     return env
 
@@ -104,6 +133,52 @@ def parse_summaries(run: TestRun) -> list[tuple[str, int, int, int]]:
         for stream in (run.stdout, run.stderr)
         for m in _SUMMARY_RE.finditer(stream)
     ]
+
+
+def _count(pattern: re.Pattern, run: TestRun) -> int:
+    return len(pattern.findall(run.stdout)) + len(pattern.findall(run.stderr))
+
+
+def unaccounted_reasons(run: TestRun) -> list[str]:
+    """Why a nonzero exit is NOT fully explained by the failures libtest actually named.
+
+    A test binary that aborts (segfault, `std::process::abort`, a panic in the harness itself)
+    prints no `test result:` summary and no `test <name> ... FAILED` line, but cargo still
+    exits nonzero. Trusting the parsed output alone would score that suite PASS. Every nonzero
+    exit must therefore be reconciled against what was actually reported.
+
+    Returns an empty list when the exit code is fully accounted for -- notably the normal
+    baseline case, where cargo exits 101 because allowlisted tests failed and every one of them
+    was named and summarised.
+    """
+    if run.returncode == 0:
+        return []
+
+    reasons: list[str] = []
+    summaries = parse_summaries(run)
+    failing = parse_failures(run)
+    failed_summaries = [s for s in summaries if s[0] == "FAILED"]
+    reported_failed = sum(s[2] for s in summaries)
+    cargo_failed_targets = _count(_CARGO_TEST_FAILED_RE, run)
+    aborts = _count(_ABORT_RE, run)
+
+    if not summaries:
+        reasons.append("nonzero exit with no test result summary at all")
+    if aborts:
+        reasons.append(f"{aborts} test process(es) aborted without reporting")
+    if reported_failed != len(failing):
+        reasons.append(
+            f"summaries report {reported_failed} failed but only "
+            f"{len(failing)} test name(s) were printed"
+        )
+    if cargo_failed_targets > len(failed_summaries):
+        reasons.append(
+            f"cargo reported {cargo_failed_targets} failing test target(s) but only "
+            f"{len(failed_summaries)} produced a FAILED summary"
+        )
+    if summaries and not failing and not reasons:
+        reasons.append("nonzero exit but no test was reported as failing")
+    return reasons
 
 
 def is_compile_error(run: TestRun) -> bool:
@@ -169,16 +244,22 @@ def score(project: str, project_dir: Path, run: TestRun, timeout: int = DEFAULT_
                 recovered.append(name)
                 break
 
+    unaccounted = unaccounted_reasons(run)
+
     if outside:
+        # Genuine named failures: report TEST_FAIL (which drives the repair round) but keep any
+        # accounting anomaly visible on the record rather than dropping it.
         return Verdict(TEST_FAIL, failing_tests=outside, error_class_hint=codes,
                        error_text=_failure_excerpt(run), summaries=summaries,
-                       baselined=baselined, flaky_recovered=recovered)
+                       baselined=baselined, flaky_recovered=recovered,
+                       reason="; ".join(unaccounted))
 
-    if not summaries:
-        # No test binary reported at all and no compile error we recognised: treat the raw
-        # cargo failure as a compile problem rather than silently passing.
-        if run.returncode != 0:
-            return Verdict(COMPILE_ERROR, error_class_hint=codes, error_text=run.stderr)
+    if unaccounted:
+        # Nonzero exit that the parsed output does not explain. Never PASS on this.
+        return Verdict(SUITE_ERROR, error_class_hint=codes, summaries=summaries,
+                       baselined=baselined, flaky_recovered=recovered,
+                       reason="; ".join(unaccounted),
+                       error_text=_failure_excerpt(run) + "\n" + run.stderr[-4000:])
 
     return Verdict(PASS, error_class_hint=codes, summaries=summaries,
                    baselined=baselined, flaky_recovered=recovered)

@@ -68,6 +68,7 @@ def run_self_test(args) -> int:
             task_content_hash=task.content_hash, baselined_failures=verdict.baselined,
             flaky_recovered=verdict.flaky_recovered,
             ambiguous_anchor=bool(info.get("ambiguous_anchor")),
+            verdict_reason=verdict.reason,
             note="reference function injected as model output",
         ))
         status = "PASS" if verdict.verdict == score.PASS else verdict.verdict

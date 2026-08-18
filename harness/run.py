@@ -47,6 +47,7 @@ class AttemptRecord:
     flaky_recovered: list[str] = field(default_factory=list)
     ambiguous_anchor: bool = False
     transport_retried: bool = False
+    verdict_reason: str = ""
     note: str = ""
 
 
@@ -123,13 +124,15 @@ def run_task(task: Task, model: str, run_id: str, dataset: Path, writer: Results
             baselined_failures=verdict.baselined, flaky_recovered=verdict.flaky_recovered,
             ambiguous_anchor=bool(info.get("ambiguous_anchor")),
             transport_retried=result.retried,
+            verdict_reason=verdict.reason,
         ))
         print(f"  attempt={attempt} {verdict.verdict} "
-              f"{','.join(verdict.failing_tests[:3])}", flush=True)
+              f"{','.join(verdict.failing_tests[:3])}"
+              f"{' | ' + verdict.reason if verdict.reason else ''}", flush=True)
 
         if attempt == 1 or not repair:
             break
-        if verdict.verdict not in (score.COMPILE_ERROR, score.TEST_FAIL):
+        if verdict.verdict not in (score.COMPILE_ERROR, score.TEST_FAIL, score.SUITE_ERROR):
             break
         prompt = tasks.build_repair_prompt(task, result.text, verdict.error_text)
 
@@ -219,6 +222,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-repair", action="store_true", help="skip the repair round")
     p.add_argument("--self-test", action="store_true",
                    help="inject reference functions as if they were model output; no model calls")
+    p.add_argument("--unit-test", action="store_true",
+                   help="offline parser/verdict tests on synthetic output; no cargo, no dataset")
     p.add_argument("--list", action="store_true", help="index the tasks and print the count")
     p.add_argument("--baseline", metavar="PROJECT",
                    help="snapshot baseline test failures on the unmodified tree ('all' for every project)")
@@ -227,6 +232,9 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if args.unit_test:
+        from .tests import run_unit_tests
+        return run_unit_tests()
     if args.list:
         return cmd_list(tasks.ensure_dataset(Path(args.dataset)))
     if args.self_test:
