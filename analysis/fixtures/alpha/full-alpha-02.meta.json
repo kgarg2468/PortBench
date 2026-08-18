@@ -1,0 +1,9 @@
+{
+  "run_id": "full-alpha-02",
+  "model": "fable",
+  "n_tasks": 1,
+  "comment": "Transport-error backfill: re-runs only the task that never produced output in run 01.",
+  "started_at": "2026-01-02T00:00:00+00:00",
+  "ended_at": "2026-01-02T01:00:00+00:00",
+  "dataset_commit": "cafebabecafebabecafebabecafebabecafebabe"
+}

@@ -1,0 +1,9 @@
+{
+  "run_id": "full-beta-01",
+  "model": "gpt-5.6-terra",
+  "n_tasks": 4,
+  "comment": "A partial run: five of the scoreable tasks were never reached.",
+  "started_at": "2026-01-01T12:00:00+00:00",
+  "ended_at": "2026-01-01T13:00:00+00:00",
+  "dataset_commit": "cafebabecafebabecafebabecafebabecafebabe"
+}
