@@ -29,6 +29,10 @@ class RunIdCollision(RuntimeError):
     pass
 
 
+# Verdicts the repair round acts on. Anything else ends the task at attempt 0.
+REPAIR_ELIGIBLE = (score.COMPILE_ERROR, score.TEST_FAIL, score.SUITE_ERROR)
+
+
 @dataclass
 class AttemptRecord:
     run_id: str
@@ -74,7 +78,7 @@ class ResultsWriter:
         self.jsonl = self.dir / f"{run_id}.jsonl"
         self.meta = self.dir / f"{run_id}.meta.json"
         self.resume = resume
-        self.existing: set[tuple[str, int]] = set()
+        self.existing: dict[tuple[str, int], str] = {}
 
         present = [p for p in (self.jsonl, self.meta) if p.exists()]
         if present and not resume:
@@ -86,8 +90,8 @@ class ResultsWriter:
         if resume:
             self.existing = self._load_existing()
 
-    def _load_existing(self) -> set[tuple[str, int]]:
-        seen: set[tuple[str, int]] = set()
+    def _load_existing(self) -> dict[tuple[str, int], str]:
+        seen: dict[tuple[str, int], str] = {}
         if not self.jsonl.exists():
             return seen
         for line in self.jsonl.read_text(encoding="utf-8", errors="ignore").splitlines():
@@ -101,17 +105,38 @@ class ResultsWriter:
             task_id = record.get("task_id")
             attempt = record.get("attempt")
             if isinstance(task_id, str) and isinstance(attempt, int):
-                seen.add((task_id, attempt))
+                seen[(task_id, attempt)] = str(record.get("verdict") or "")
         return seen
 
-    def done_task_ids(self) -> set[str]:
-        return {task_id for task_id, _ in self.existing}
+    def done_task_ids(self, repair: bool = True) -> set[str]:
+        """Tasks that need no further work.
+
+        A recorded attempt 0 is not the same as a finished task. If its verdict was one the
+        repair round would have acted on and the process died before attempt 1, the task is
+        half-done: skipping it on resume would leave the run permanently missing a repair
+        attempt it owes, and every pass@1-with-repair figure drawn from the file would be
+        computed over a denominator that quietly lost it.
+        """
+        attempts: dict[str, dict[int, str]] = {}
+        for (task_id, attempt), verdict in self.existing.items():
+            attempts.setdefault(task_id, {})[attempt] = verdict
+
+        done: set[str] = set()
+        for task_id, by_attempt in attempts.items():
+            if 1 in by_attempt:
+                done.add(task_id)
+                continue
+            if 0 not in by_attempt:
+                continue
+            if not repair or by_attempt[0] not in REPAIR_ELIGIBLE:
+                done.add(task_id)
+        return done
 
     def write(self, record: AttemptRecord) -> None:
         key = (record.task_id, record.attempt)
         if key in self.existing:
             return                                   # resume: already on record, never duplicate
-        self.existing.add(key)
+        self.existing[key] = record.verdict
         with self.jsonl.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(asdict(record), sort_keys=True) + "\n")
 
@@ -194,7 +219,7 @@ def run_task(task: Task, model: str, run_id: str, dataset: Path, writer: Results
 
         if attempt == 1 or not repair:
             break
-        if verdict.verdict not in (score.COMPILE_ERROR, score.TEST_FAIL, score.SUITE_ERROR):
+        if verdict.verdict not in REPAIR_ELIGIBLE:
             break
         prompt = tasks.build_repair_prompt(task, result.text, verdict.error_text)
 
@@ -285,7 +310,7 @@ def cmd_run(args) -> int:
             print(f"excluded {len(excluded)} task(s) whose prompt still leaks the reference: "
                   f"{excluded}", file=sys.stderr)
         if args.resume:
-            done = writer.done_task_ids()
+            done = writer.done_task_ids(repair=not args.no_repair)
             skipped = [t.task_id for t in selected if t.task_id in done]
             selected = [t for t in selected if t.task_id not in done]
             if skipped:
@@ -369,6 +394,25 @@ def cmd_calibrate(args) -> int:
         lock.release(dataset)
 
 
+def snapshot_health_problems(run: score.TestRun, count: int) -> list[str]:
+    """Why a snapshot run is not trustworthy enough to record a test-target count from.
+
+    A timed-out, non-compiling or otherwise unreconciled run still parses *some* summaries, and
+    persisting that truncated number quietly lowers the bar for every later run: fewer targets
+    are then "expected", so a generated function that kills a test binary before it reports can
+    pass. Only a clean, fully accounted run counts.
+    """
+    problems: list[str] = []
+    if run.timed_out:
+        problems.append("the snapshot run timed out")
+    if score.is_compile_error(run):
+        problems.append("the snapshot run did not compile")
+    problems.extend(score.unaccounted_reasons(run))
+    if count <= 0:
+        problems.append("the snapshot run produced no test result summaries")
+    return problems
+
+
 def cmd_snapshot_targets(args) -> int:
     """Record how many `test result:` summaries each project prints on the unmodified tree."""
     dataset = tasks.ensure_dataset(Path(args.dataset))
@@ -379,14 +423,27 @@ def cmd_snapshot_targets(args) -> int:
         print(f"refusing to start: {exc}", file=sys.stderr)
         return 2
     try:
+        failed = False
         for project in projects:
             run = score.run_tests(tasks.project_dir(dataset, project),
                                   score.TEST_COMMANDS[project], timeout=args.test_timeout)
             count = len(score.parse_summaries(run))
-            expected.record(project, count)
+            problems = snapshot_health_problems(run, count)
+            if problems:
+                failed = True
+                _print_problems(
+                    problems,
+                    f"{project}: NOT recorded ({count} summaries, rc={run.returncode})")
+                continue
+            try:
+                expected.record(project, count, force=args.force_snapshot)
+            except expected.SnapshotRefused as exc:
+                failed = True
+                print(f"{project}: {exc}", file=sys.stderr)
+                continue
             print(f"{project}: {count} test-target summaries (rc={run.returncode})")
         print(f"recorded -> {expected.CACHE_PATH}")
-        return 0
+        return 1 if failed else 0
     finally:
         lock.release(dataset)
 
@@ -423,6 +480,8 @@ def build_parser() -> argparse.ArgumentParser:
                         "the suite notices; no model calls")
     p.add_argument("--snapshot-targets", action="store_true",
                    help="record each project's test-target summary count on the unmodified tree")
+    p.add_argument("--force-snapshot", action="store_true",
+                   help="allow --snapshot-targets to lower an already recorded count")
     p.add_argument("--self-test", action="store_true",
                    help="inject reference functions as if they were model output; no model calls")
     p.add_argument("--unit-test", action="store_true",

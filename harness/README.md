@@ -116,6 +116,7 @@ python -m harness.run --model fable --tasks 'projects__libp2p__*ecdsa*' --run-id
 | `--no-repair` | one-shot only, skip the repair round |
 | `--calibrate` | inject `unimplemented!()` into the selected tasks and report whether the suite notices; no model calls |
 | `--snapshot-targets` | record each project's test-target summary count on the unmodified tree |
+| `--force-snapshot` | allow `--snapshot-targets` to *lower* an already recorded count |
 | `--model-timeout` / `--test-timeout` | seconds (default 600 / 1800) |
 | `--out` | results root (default `./results`) |
 
@@ -126,11 +127,17 @@ shares one warm `target/`; running two at once corrupts both.
 
 Three rails, because each of these produced real corruption during development:
 
-- **A dataset lock.** `dataset/.portbench-lock` is created `O_EXCL` before any injection and
-  released in a `finally`. A second runner exits immediately and names the pid and run id
-  holding it, instead of sweeping away the first runner's live `*.portbench-bak` (which would
-  leave the first one silently testing reference code). A lock whose pid is gone is reclaimed
-  automatically, so a killed run needs no manual cleanup.
+- **A dataset lock.** `dataset/.portbench-lock` is taken before any injection and released in a
+  `finally`. A second runner exits immediately and names the pid and run id holding it, instead
+  of sweeping away the first runner's live `*.portbench-bak` (which would leave the first one
+  silently testing reference code). A lock whose pid is gone is reclaimed automatically, so a
+  killed run needs no manual cleanup.
+
+  Creation is **atomic**: the metadata is written to a temp file and `os.link`ed into place, so
+  the lock is never observable without a pid in it. Creating an empty file and then writing it
+  leaves a window in which a second process reads `{}`, concludes the holder is dead, and
+  unlinks a live lock. For the same reason a lock with no readable metadata is treated as
+  **held**, and only becomes reclaimable once it is provably older than 120s.
 - **A dataset preflight.** Before the first model call: `HEAD` must equal the pinned commit, no
   `*.portbench-bak` may be left over, no tracked file may be modified, and all 108 anchors must
   resolve. Drift or an in-flight injection would otherwise be recorded as a *model* failure.
@@ -139,6 +146,12 @@ Three rails, because each of these produced real corruption during development:
   metadata, so the meta described a different set of tasks than the file held and every
   leaderboard denominator drawn from the pair was wrong. `--resume` opts in explicitly and
   dedupes by `(task_id, attempt)`.
+
+  A resumed task counts as finished only if attempt 1 exists, or attempt 0 landed on a verdict
+  the repair round would not have acted on (or `--no-repair` is set). A lone repair-eligible
+  attempt 0 is a half-done task: treating it as complete would leave the run permanently owing
+  a repair attempt, and pass@1-with-repair would be computed over a denominator that quietly
+  lost it.
 
 ## How a task is scored
 
@@ -235,6 +248,11 @@ during `--self-test`, which already runs each suite on reference code) into
 `harness/expected_summaries.json`, and a run with fewer summaries than the snapshot is
 `SUITE_ERROR` regardless of exit code. Projects with no snapshot yet skip the check rather than
 guess.
+
+A snapshot is only persisted from a **healthy** run: not timed out, compiling, exit code fully
+reconciled, and more than zero summaries. Recording a zero would disable the check outright, and
+recording a truncated count would lower the bar for every later run, so a count below one
+already stored needs `--force-snapshot` to say the project genuinely lost test targets.
 
 ### Baseline vs. flake
 

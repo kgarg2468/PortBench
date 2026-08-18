@@ -11,10 +11,11 @@ import json
 import os
 import sys
 import tempfile
+import time
 from pathlib import Path
 
-from . import inject, lock, score, tasks
-from .run import ResultsWriter, RunIdCollision
+from . import expected, inject, lock, score, tasks
+from .run import ResultsWriter, RunIdCollision, snapshot_health_problems
 from .score import TestRun
 from .tasks import Task
 
@@ -223,7 +224,8 @@ def run_unit_tests() -> int:
     with tempfile.TemporaryDirectory() as out:
         ResultsWriter(Path(out), "haiku", "r1")
         (Path(out) / "haiku" / "r1.jsonl").write_text(
-            json.dumps({"task_id": "t1", "attempt": 0}) + "\n", encoding="utf-8")
+            json.dumps({"task_id": "t1", "attempt": 0, "verdict": score.PASS}) + "\n",
+            encoding="utf-8")
         try:
             ResultsWriter(Path(out), "haiku", "r1")
             results.append(_check("existing run id is refused", "accepted", "refused"))
@@ -231,9 +233,44 @@ def run_unit_tests() -> int:
             results.append(_check("existing run id is refused", True, True))
         resumed = ResultsWriter(Path(out), "haiku", "r1", resume=True)
         results.append(_check("  ...--resume reads the existing attempts",
-                              resumed.existing, {("t1", 0)}))
-        results.append(_check("  ...and reports the task as done",
+                              resumed.existing, {("t1", 0): score.PASS}))
+        results.append(_check("  ...and reports the finished task as done",
                               resumed.done_task_ids(), {"t1"}))
+
+    # 13b. REVIEW (PR #2): an attempt 0 the repair round owes a follow-up to is NOT done.
+    with tempfile.TemporaryDirectory() as out:
+        (Path(out) / "haiku").mkdir(parents=True)
+        (Path(out) / "haiku" / "r2.jsonl").write_text("\n".join(
+            json.dumps(r) for r in [
+                {"task_id": "owed", "attempt": 0, "verdict": score.TEST_FAIL},
+                {"task_id": "repaired", "attempt": 0, "verdict": score.TEST_FAIL},
+                {"task_id": "repaired", "attempt": 1, "verdict": score.PASS},
+                {"task_id": "passed", "attempt": 0, "verdict": score.PASS},
+                {"task_id": "unrepairable", "attempt": 0, "verdict": score.TRANSPORT_ERROR},
+            ]) + "\n", encoding="utf-8")
+        w = ResultsWriter(Path(out), "haiku", "r2", resume=True)
+        results.append(_check("resume: repair-eligible attempt 0 alone is NOT done",
+                              w.done_task_ids(repair=True),
+                              {"repaired", "passed", "unrepairable"}))
+        results.append(_check("  ...but is done when --no-repair",
+                              w.done_task_ids(repair=False),
+                              {"owed", "repaired", "passed", "unrepairable"}))
+        # Re-running the owed task must append attempt 1 without duplicating attempt 0.
+        from .run import AttemptRecord
+        w.write(AttemptRecord(run_id="r2", model="haiku", task_id="owed", project="p",
+                              attempt=0, verdict=score.TEST_FAIL))
+        w.write(AttemptRecord(run_id="r2", model="haiku", task_id="owed", project="p",
+                              attempt=1, verdict=score.PASS))
+        lines = [json.loads(l) for l in
+                 (Path(out) / "haiku" / "r2.jsonl").read_text().splitlines() if l.strip()]
+        results.append(_check("  ...re-run does not duplicate attempt 0",
+                              sum(1 for r in lines
+                                  if r["task_id"] == "owed" and r["attempt"] == 0), 1))
+        results.append(_check("  ...and appends the missing attempt 1",
+                              sum(1 for r in lines
+                                  if r["task_id"] == "owed" and r["attempt"] == 1), 1))
+        results.append(_check("  ...after which the task is done",
+                              "owed" in w.done_task_ids(repair=True), True))
 
     # 14. #9: a second runner cannot take a lock the first one holds.
     with tempfile.TemporaryDirectory() as dataset:
@@ -253,6 +290,74 @@ def run_unit_tests() -> int:
         results.append(_check("stale lock is reclaimed",
                               lock.read_lock(Path(dataset)).get("run_id"), "run-c"))
         lock.release(Path(dataset))
+
+    # 14b. REVIEW (PR #2): a lock carrying no readable metadata must be treated as HELD.
+    #      Reclaiming it on sight let a second runner delete a lock the first had just created
+    #      but not yet written, and both then injected into the same tree.
+    with tempfile.TemporaryDirectory() as dataset:
+        path = lock.lock_path(Path(dataset))
+        path.write_text("", encoding="utf-8")
+        try:
+            lock.acquire(Path(dataset), "run-d")
+            results.append(_check("empty lock file is treated as held", "acquired", "refused"))
+        except lock.LockError as exc:
+            results.append(_check("empty lock file is treated as held", True, True))
+            results.append(_check("  ...and says it is unreadable, not stale",
+                                  "no readable metadata" in str(exc), True))
+        results.append(_check("  ...and is not deleted", path.exists(), True))
+        # Only once it is provably older than the grace period may it be reclaimed.
+        old = time.time() - (lock.UNREADABLE_LOCK_GRACE_S + 60)
+        os.utime(path, (old, old))
+        lock.acquire(Path(dataset), "run-e")
+        results.append(_check("  ...but an aged unreadable lock is reclaimed",
+                              lock.read_lock(Path(dataset)).get("run_id"), "run-e"))
+        lock.release(Path(dataset))
+        # A lock is never observable without its metadata: creation is atomic.
+        lock.acquire(Path(dataset), "run-f")
+        results.append(_check("a fresh lock always carries a pid",
+                              lock.read_lock(Path(dataset)).get("pid"), os.getpid()))
+        results.append(_check("  ...and release leaves a foreign lock alone",
+                              _release_foreign_lock(Path(dataset)), True))
+
+    # 14c. REVIEW (PR #2): a snapshot may only be recorded from a healthy run.
+    good = TestRun(0, OK_OUTPUT, "", 1.0)
+    results.append(_check("healthy snapshot run is accepted",
+                          snapshot_health_problems(good, 3), []))
+    results.append(_check("timed-out snapshot run is refused",
+                          bool(snapshot_health_problems(
+                              TestRun(-1, OK_OUTPUT, "", 1.0, timed_out=True), 3)), True))
+    results.append(_check("non-compiling snapshot run is refused",
+                          bool(snapshot_health_problems(
+                              TestRun(101, "", "error: could not compile `x`\n", 1.0), 0)), True))
+    results.append(_check("unreconciled snapshot run is refused",
+                          bool(snapshot_health_problems(TestRun(101, OK_OUTPUT, "", 1.0), 3)), True))
+    results.append(_check("zero-summary snapshot run is refused",
+                          bool(snapshot_health_problems(TestRun(0, "", "", 1.0), 0)), True))
+
+    with tempfile.TemporaryDirectory() as cache_dir:
+        original_cache = expected.CACHE_PATH
+        expected.CACHE_PATH = Path(cache_dir) / "expected_summaries.json"
+        try:
+            results.append(_check("first snapshot is recorded", expected.record("p", 158), True))
+            results.append(_check("  ...and is readable back", expected.expected("p"), 158))
+            try:
+                expected.record("p", 0)
+                results.append(_check("zero count is refused", "recorded", "refused"))
+            except expected.SnapshotRefused:
+                results.append(_check("zero count is refused", True, True))
+            try:
+                expected.record("p", 12)
+                results.append(_check("lowering a count needs --force-snapshot",
+                                      "recorded", "refused"))
+            except expected.SnapshotRefused:
+                results.append(_check("lowering a count needs --force-snapshot", True, True))
+            results.append(_check("  ...and the old count survives the refusal",
+                                  expected.expected("p"), 158))
+            results.append(_check("  ...while --force-snapshot lowers it",
+                                  expected.record("p", 12, force=True), True))
+            results.append(_check("raising a count needs no force", expected.record("p", 200), True))
+        finally:
+            expected.CACHE_PATH = original_cache
 
     # 15. #14: codex JSONL shapes that used to be ignored.
     from . import models
@@ -309,6 +414,16 @@ def run_unit_tests() -> int:
     passed = sum(results)
     print(f"\nunit tests: {passed}/{len(results)} ok")
     return 0 if passed == len(results) else 1
+
+
+def _release_foreign_lock(dataset: Path) -> bool:
+    """True if `release` left a lock held by another pid in place."""
+    path = lock.lock_path(dataset)
+    path.write_text(json.dumps({"pid": 2 ** 22, "run_id": "someone-else"}), encoding="utf-8")
+    lock.release(dataset)
+    survived = path.exists()
+    path.unlink(missing_ok=True)
+    return survived
 
 
 def _rerun_verdict(stdout: str, returncode: int) -> bool:

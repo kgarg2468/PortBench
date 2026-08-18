@@ -116,7 +116,11 @@ def _run_self_test(args, dataset: Path, run_id: str, writer: ResultsWriter) -> i
     for project, count in sorted(observed.items()):
         known = expected.expected(project)
         if known is None:
-            expected.record(project, count)
+            try:
+                expected.record(project, count)
+            except expected.SnapshotRefused as exc:
+                print(f"{project}: {exc}", file=sys.stderr)
+                continue
             print(f"snapshotted {project}: {count} test-target summaries "
                   f"-> {expected.CACHE_PATH.name}")
         elif known != count:
