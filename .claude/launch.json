@@ -4,8 +4,26 @@
     {
       "name": "portbench-board",
       "runtimeExecutable": "python3",
-      "runtimeArgs": ["-m", "http.server", "4173", "--directory", "board"],
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "4173",
+        "--directory",
+        "board"
+      ],
       "port": 4173
+    },
+    {
+      "name": "portbench-site",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "4175",
+        "--directory",
+        "site"
+      ],
+      "port": 4175
     }
   ]
 }

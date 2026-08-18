@@ -159,9 +159,18 @@
 
   function derive(m) {
     var n = m.tasks_attempted;
-    var cost =
-      m.tokens.in / 1e6 * m.price_per_mtok_usd.in +
-      m.tokens.out / 1e6 * m.price_per_mtok_usd.out;
+    /* Real data ships cost_usd (null when usage or pricing is missing — never 0);
+       the sample files predate that field, so fall back to computing from tokens
+       only when both tokens and prices are actually present. */
+    var cost = null;
+    if (typeof m.cost_usd === "number") {
+      cost = m.cost_usd;
+    } else if (m.cost_usd === undefined && m.tokens && m.price_per_mtok_usd &&
+               typeof m.tokens.in === "number" && typeof m.tokens.out === "number") {
+      cost =
+        m.tokens.in / 1e6 * m.price_per_mtok_usd.in +
+        m.tokens.out / 1e6 * m.price_per_mtok_usd.out;
+    }
     return {
       raw: m,
       model: m.model,
@@ -175,7 +184,9 @@
       liftPP: (m.passed_after_repair - m.passed_oneshot) / n * 100,
       recovery: (m.passed_after_repair - m.passed_oneshot) / (n - m.passed_oneshot),
       cost: cost,
-      costPerSolved: m.passed_after_repair > 0 ? cost / m.passed_after_repair : null
+      costPartial: m.cost_partial === true,
+      costPerSolved: cost !== null && m.passed_after_repair > 0
+        ? cost / m.passed_after_repair : null
     };
   }
 
@@ -415,10 +426,16 @@
     var b3 = el("div", "detail-block");
     b3.appendChild(el("h4", null, "Budget"));
     var facts = [
-      ["attempts", (r.n + (r.n - r.one)) + " (108 one-shot + " + (r.n - r.one) + " repair)"],
-      ["tokens in / out", intFmt(r.raw.tokens.in) + " / " + intFmt(r.raw.tokens.out)],
-      ["price per Mtok", "$" + r.raw.price_per_mtok_usd.in + " in · $" + r.raw.price_per_mtok_usd.out + " out"],
-      ["total spend", money(r.cost)],
+      ["attempts", (r.n + (r.n - r.one)) + " (" + r.n + " one-shot + " + (r.n - r.one) + " repair)"],
+      ["tokens in / out",
+        r.raw.tokens && typeof r.raw.tokens.in === "number"
+          ? intFmt(r.raw.tokens.in) + " / " + intFmt(r.raw.tokens.out)
+          : "not reported"],
+      ["price per Mtok",
+        r.raw.price_per_mtok_usd
+          ? "$" + r.raw.price_per_mtok_usd.in + " in · $" + r.raw.price_per_mtok_usd.out + " out"
+          : "no list price"],
+      ["total spend", money(r.cost) + (r.costPartial ? " (partial)" : "")],
       ["per solved task", money(r.costPerSolved)],
       ["median attempt", r.raw.duration_s_median + " s"],
       ["wall clock", (r.raw.duration_s_total / 3600).toFixed(1) + " h"]
@@ -555,7 +572,7 @@
       });
       var title = el("span", "title", state.mode === "share"
         ? "share of that model's failed attempts"
-        : "failed attempts, of 108 tasks");
+        : "failed attempts, of " + lb.dataset.tasks_total + " tasks");
       ticks.appendChild(title);
       axis.appendChild(ticks);
       chart.appendChild(axis);
@@ -615,7 +632,8 @@
     /* dumbbells */
     var head = el("p", "eyebrow");
     head.style.margin = "48px 0 0";
-    head.textContent = "One-shot → after one repair round · pass rate on 108 tasks";
+    head.textContent = "One-shot → after one repair round · pass rate on " +
+      lb.dataset.tasks_total + " tasks";
     mount.appendChild(head);
 
     var maxRate = Math.max.apply(null, rows.map(function (r) { return r.repRate; }));
@@ -906,7 +924,7 @@
         fill: "#74716c", "font-size": 10, "letter-spacing": ".14em",
         "font-family": "ui-monospace, SFMono-Regular, Menlo, monospace"
       });
-      yt.textContent = "PASS RATE, % OF 108 TASKS";
+      yt.textContent = "PASS RATE, % OF " + tr.tasks_total + " TASKS";
       svg.appendChild(yt);
 
       /* series */

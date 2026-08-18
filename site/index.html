@@ -75,7 +75,8 @@
         <div class="rail"><span class="no">01</span><span class="tick"></span></div>
         <h3>Leaderboard</h3>
         <p>
-          Share of the 108 tasks that compile <em>and</em> pass the project's real test suite.
+          Share of the scoreable tasks (108 minus the handful whose test suites can't detect a wrong
+          answer — see Method) that compile <em>and</em> pass the project's real test suite.
           The solid bar is one-shot; the hatched extension is what the model recovers when it is
           handed its own compiler error once. Cost is total spend divided by tasks actually solved —
           the only cost number that means anything. Click any row for the per-project and per-verdict split.
@@ -160,7 +161,7 @@
 
     <div class="aboutgrid">
       <div>
-        <h4>Method, in five sentences</h4>
+        <h4>Method, in six sentences</h4>
         <ol>
           <li>Each model gets one shot per task: the Python source function, the target Rust
             signature, and the surrounding declarations and <code>use</code> lines — no tools, no
@@ -174,6 +175,10 @@
             allowlist, so a flaky mDNS or DNS test in libp2p can never be charged to a model.</li>
           <li>A task counts as solved only when it compiles and every non-baseline test passes;
             everything else is bucketed by verdict and by rustc error code.</li>
+          <li>Before any model ran, every task was mutation-calibrated: its reference solution was
+            replaced with <code>unimplemented!()</code> and the suite had to notice — tasks whose
+            tests can't detect even a missing body are excluded from every denominator on this
+            page.</li>
         </ol>
       </div>
 
