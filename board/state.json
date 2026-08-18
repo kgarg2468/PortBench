@@ -1,6 +1,6 @@
 {
   "project": "PortBench",
-  "updated": "2026-08-18T19:45:00Z",
+  "updated": "2026-08-18T20:30:00Z",
   "nodes": [
     {
       "id": "spike",
@@ -210,7 +210,7 @@
       "id": "gallery_capture",
       "label": "Gallery capture\n(--keep-artifacts + subset rerun)",
       "status": "running",
-      "note": "Opus worker adding --keep-artifacts (PR #5, worktree \u2014 merges after lanes finish); then ~15-task subset rerun for real gallery code",
+      "note": "PR #5 merged remotely (resume-artifact fix, 102/102 tests). Main checkout pull deferred until lanes finish; then subset rerun with --keep-artifacts.",
       "deps": [
         "aggregator"
       ]
