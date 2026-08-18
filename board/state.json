@@ -1,6 +1,6 @@
 {
   "project": "PortBench",
-  "updated": "2026-08-18T10:20:00Z",
+  "updated": "2026-08-18T10:50:00Z",
   "nodes": [
     {
       "id": "spike",
@@ -62,7 +62,9 @@
       "note": "108 tasks x Fable 5, Opus 5, Sonnet 5, Haiku 4.5 via claude -p (one-shot + repair)",
       "deps": [
         "smoke",
-        "gpt_review"
+        "gpt_review",
+        "calibration",
+        "smoke2"
       ]
     },
     {
@@ -72,7 +74,9 @@
       "note": "108 tasks x GPT-5.6 Sol, Terra, Luna, GPT-5.5 via codex exec",
       "deps": [
         "smoke",
-        "gpt_review"
+        "gpt_review",
+        "calibration",
+        "smoke2"
       ]
     },
     {
@@ -126,10 +130,37 @@
     {
       "id": "gpt_review",
       "label": "GPT cross-review\n(Sol xhigh on harness)",
-      "status": "running",
-      "note": "Independent scoring-soundness + fairness review of merged harness before full runs",
+      "status": "done",
+      "note": "15 findings: 1 P0 (agentic CLIs can read answer key from cwd), 11 P1 (incl. 2 tasks leak reference in prompt, run-id collisions, flaky-retry dead path), 3 P2. Fix round required.",
       "deps": [
         "harness_pr"
+      ]
+    },
+    {
+      "id": "harness_fixes",
+      "label": "Harness fix round\n(Sol findings, PR #2)",
+      "status": "running",
+      "note": "Opus worker: isolated no-tools model calls, prompt-leak task exclusion, retry-in-context, locking, run-id safety, parsing hardening",
+      "deps": [
+        "gpt_review"
+      ]
+    },
+    {
+      "id": "calibration",
+      "label": "Mutation calibration\n(does each task's test bite?)",
+      "status": "blocked",
+      "note": "Inject panic!() per task; suite must fail, else task marked uncovered + excluded/disclosed. ~2.4h background.",
+      "deps": [
+        "harness_fixes"
+      ]
+    },
+    {
+      "id": "smoke2",
+      "label": "Smoke rerun\n(post-fix, fresh run-ids)",
+      "status": "blocked",
+      "note": "Re-validates pipeline after P0 fix; first smoke's scores are void (models had fs access)",
+      "deps": [
+        "harness_fixes"
       ]
     }
   ]
