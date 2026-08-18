@@ -1,6 +1,6 @@
 {
   "project": "PortBench",
-  "updated": "2026-08-18T11:25:00Z",
+  "updated": "2026-08-18T11:55:00Z",
   "nodes": [
     {
       "id": "spike",
@@ -139,8 +139,8 @@
     {
       "id": "harness_fixes",
       "label": "Harness fix round\n(Sol findings, PR #2)",
-      "status": "running",
-      "note": "Opus worker: isolated no-tools model calls, prompt-leak task exclusion, retry-in-context, locking, run-id safety, parsing hardening",
+      "status": "done",
+      "note": "PR #2: all 15 findings fixed/adjusted. Leak scan: exactly 2 tasks, both stripped. 59/59 unit, 6/6 self-test, isolated-path haiku call PASS. Tainted smoke results deleted.",
       "deps": [
         "gpt_review"
       ]
@@ -151,7 +151,8 @@
       "status": "blocked",
       "note": "Inject panic!() per task; suite must fail, else task marked uncovered + excluded/disclosed. ~2.4h background.",
       "deps": [
-        "harness_fixes"
+        "harness_fixes",
+        "fixes_pr"
       ]
     },
     {
@@ -159,6 +160,16 @@
       "label": "Smoke rerun\n(post-fix, fresh run-ids)",
       "status": "blocked",
       "note": "Re-validates pipeline after P0 fix; first smoke's scores are void (models had fs access)",
+      "deps": [
+        "harness_fixes",
+        "fixes_pr"
+      ]
+    },
+    {
+      "id": "fixes_pr",
+      "label": "Fixes PR\n(Greptile review + merge)",
+      "status": "running",
+      "note": "PR #2 awaiting Greptile",
       "deps": [
         "harness_fixes"
       ]
