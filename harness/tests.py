@@ -411,9 +411,147 @@ def run_unit_tests() -> int:
     results.append(_check("rerun that genuinely passed is a recovery",
                           _rerun_verdict(passing, 0), True))
 
+    # 18. --keep-artifacts: the failure gallery needs the code the model actually wrote, which
+    #     the harness otherwise reverts and forgets. Fake adapter, fake cargo, temp dir.
+    results.extend(_artifact_checks())
+
     passed = sum(results)
     print(f"\nunit tests: {passed}/{len(results)} ok")
     return 0 if passed == len(results) else 1
+
+
+GOOD_ANSWER = ("Here is the translation.\n\n```rust\nuse std::fmt::Debug;\n\n"
+               "pub fn answer(x: u32) -> u32 {\n    x + 2\n}\n```\n")
+PROSE_ANSWER = "I could not translate that function.\n"
+RETRY_ANSWER = GOOD_ANSWER.replace("x + 2", "x + 3")
+
+
+def _artifact_checks() -> list[bool]:
+    """Drive `run_task` end to end with a fake model CLI and a fake cargo, under --keep-artifacts.
+
+    Covers both artifact shapes in one run: attempt 0 injects and fails its tests (answer +
+    injected + error), attempt 1 answers in prose (answer + error, and NO injected.rs, because
+    nothing reached the tree).
+    """
+    from . import models
+    from .run import ARTIFACT_ERROR_LIMIT, ResultsWriter, run_task
+
+    queue: list[str] = []
+
+    def fake_call_model(model, prompt, timeout=None):
+        text = queue.pop(0) if queue else PROSE_ANSWER
+        return models.ModelResult(text, 10, 20, 30, 0.1, resolved_model="fake-model-1")
+
+    # charset-normalizer expects 4 summaries; OK_OUTPUT carries 3 plus this failing one.
+    fail_run = TestRun(101, OK_OUTPUT + (
+        "\nrunning 1 test\ntest cd::wrong_answer ... FAILED\n\n"
+        "failures:\n\n---- cd::wrong_answer stdout ----\n"
+        "assertion `left == right` failed\n  left: 3\n right: 4\n\n"
+        "failures:\n    cd::wrong_answer\n\n"
+        "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; "
+        "finished in 0.1s\n"), "error: test failed, to rerun pass `--lib`\n", 1.0)
+
+    checks: list[bool] = []
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        target = root / "lib.rs"
+        original = "fn other() {}\n\n" + REFERENCE_FN + "\n"
+        target.write_text(original, encoding="utf-8")
+        task = _fake_task(target_path=target)
+        out = root / "results"
+
+        real_call, real_run_tests = models.call_model, score.run_tests
+        models.call_model = fake_call_model                     # type: ignore[assignment]
+        score.run_tests = lambda *a, **k: fail_run              # type: ignore[assignment]
+        try:
+            queue[:] = [GOOD_ANSWER, PROSE_ANSWER]
+            kept = ResultsWriter(out, "haiku", "kept", keep_artifacts=True)
+            run_task(task, "haiku", "kept", root / "dataset", kept, 10, 10, True)
+
+            queue[:] = [GOOD_ANSWER, PROSE_ANSWER]
+            plain = ResultsWriter(out, "haiku", "plain")
+            run_task(task, "haiku", "plain", root / "dataset", plain, 10, 10, True)
+
+            # A run killed after attempt 0, then resumed: the repair-owed task re-runs from
+            # attempt 0, whose record is suppressed as a duplicate (REVIEW, PR #5).
+            queue[:] = [GOOD_ANSWER]
+            owed = ResultsWriter(out, "haiku", "owed", keep_artifacts=True)
+            run_task(task, "haiku", "owed", root / "dataset", owed, 10, 10, False)
+            queue[:] = [RETRY_ANSWER, PROSE_ANSWER]
+            resumed = ResultsWriter(out, "haiku", "owed", resume=True, keep_artifacts=True)
+            run_task(task, "haiku", "owed", root / "dataset", resumed, 10, 10, True)
+        finally:
+            models.call_model = real_call                       # type: ignore[assignment]
+            score.run_tests = real_run_tests                    # type: ignore[assignment]
+
+        base = out / "haiku" / "kept.artifacts" / task.task_id
+        a0, a1 = base / "attempt0", base / "attempt1"
+        checks.append(_check("keep-artifacts: attempt 0 writes all three files",
+                             sorted(p.name for p in a0.iterdir()),
+                             ["answer.md", "error.txt", "injected.rs"]))
+        checks.append(_check("  ...answer.md is the raw model text",
+                             a0.joinpath("answer.md").read_text(), GOOD_ANSWER))
+        injected = a0.joinpath("injected.rs").read_text()
+        checks.append(_check("  ...injected.rs carries the use line and the function",
+                             "use std::fmt::Debug;" in injected and "x + 2" in injected, True))
+        checks.append(_check("  ...and not the surrounding file",
+                             "fn other()" in injected, False))
+        checks.append(_check("  ...error.txt carries the failure output",
+                             "cd::wrong_answer" in a0.joinpath("error.txt").read_text(), True))
+        checks.append(_check("keep-artifacts: an unextractable answer writes no injected.rs",
+                             sorted(p.name for p in a1.iterdir()),
+                             ["answer.md", "error.txt"]))
+        checks.append(_check("  ...but still keeps the raw answer",
+                             a1.joinpath("answer.md").read_text(), PROSE_ANSWER))
+        checks.append(_check("  ...and the extraction error",
+                             "function_item" in a1.joinpath("error.txt").read_text(), True))
+        checks.append(_check("  ...and the tree is still restored",
+                             target.read_text(), original))
+
+        records = [json.loads(l) for l in
+                   (out / "haiku" / "kept.jsonl").read_text().splitlines() if l.strip()]
+        checks.append(_check("keep-artifacts: the record points at the directory",
+                             [r.get("artifacts_dir") for r in records],
+                             [f"haiku/kept.artifacts/{task.task_id}/attempt0",
+                              f"haiku/kept.artifacts/{task.task_id}/attempt1"]))
+        checks.append(_check("  ...relative to the results root, so it resolves",
+                             (out / records[0]["artifacts_dir"] / "answer.md").exists(), True))
+
+        # Default: nothing written, and the JSONL schema is untouched.
+        plain_records = [json.loads(l) for l in
+                         (out / "haiku" / "plain.jsonl").read_text().splitlines() if l.strip()]
+        checks.append(_check("no flag: no artifacts directory",
+                             (out / "haiku" / "plain.artifacts").exists(), False))
+        checks.append(_check("  ...and no artifacts_dir key on the records",
+                             [("artifacts_dir" in r) for r in plain_records], [False, False]))
+        checks.append(_check("  ...while the run still scored normally",
+                             [r["verdict"] for r in plain_records],
+                             [score.TEST_FAIL, score.EXTRACTION_ERROR]))
+
+        # Resume: the JSONL line for attempt 0 describes the FIRST execution, so the artifacts
+        # beside it must too -- a re-executed attempt 0 must not overwrite them.
+        owed_base = out / "haiku" / "owed.artifacts" / task.task_id
+        owed_records = [json.loads(l) for l in
+                        (out / "haiku" / "owed.jsonl").read_text().splitlines() if l.strip()]
+        checks.append(_check("resume: re-run attempt 0 keeps the recorded artifacts",
+                             owed_base.joinpath("attempt0", "answer.md").read_text(), GOOD_ANSWER))
+        checks.append(_check("  ...injected.rs too, not the re-run's code",
+                             "x + 3" in owed_base.joinpath("attempt0", "injected.rs").read_text(),
+                             False))
+        checks.append(_check("  ...while attempt 1 gets its own artifacts",
+                             owed_base.joinpath("attempt1", "answer.md").read_text(), PROSE_ANSWER))
+        checks.append(_check("  ...and attempt 0 is on record exactly once",
+                             [r["attempt"] for r in owed_records], [0, 1]))
+
+        # A runaway panic loop can print megabytes; error.txt is capped.
+        kept.record_artifacts("big-task", 0, answer="a", injected=None,
+                              error_text="x" * (ARTIFACT_ERROR_LIMIT * 2) + "TAIL")
+        capped = (out / "haiku" / "kept.artifacts" / "big-task" / "attempt0" / "error.txt")
+        checks.append(_check("error.txt is truncated",
+                             len(capped.read_text()) <= ARTIFACT_ERROR_LIMIT + 200, True))
+        checks.append(_check("  ...keeping the tail, where the failure list is",
+                             capped.read_text().endswith("TAIL"), True))
+    return checks
 
 
 def _release_foreign_lock(dataset: Path) -> bool:
