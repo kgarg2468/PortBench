@@ -163,10 +163,17 @@ class ResultsWriter:
         Returns the directory path relative to the results root (what goes on the record), or
         "" when artifacts are off. `injected` is None when extraction failed, so the absence of
         `injected.rs` is itself the signal that nothing reached the tree.
+
+        Writing is coupled to `write` accepting the record. On `--resume` a task that owes a
+        repair attempt re-runs attempt 0 to get there; that record is suppressed as a duplicate,
+        so overwriting its artifacts would leave the recorded line describing one execution and
+        the files describing another.
         """
         if self.artifacts_root is None:
             return ""
         rel = f"{self.rel_artifacts_root}/{task_id}/attempt{attempt}"
+        if (task_id, attempt) in self.existing:
+            return rel                          # already on record: keep that run's artifacts
         out = self.artifacts_root / task_id / f"attempt{attempt}"
         out.mkdir(parents=True, exist_ok=True)
         (out / "answer.md").write_text(answer or "", encoding="utf-8", errors="replace")

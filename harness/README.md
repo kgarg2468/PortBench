@@ -317,7 +317,10 @@ directory per attempt under `results/<model>/<run_id>.artifacts/<task_id>/attemp
 exactly as they went into the tree — absent on `EXTRACTION_ERROR`, since nothing was injected)
 and `error.txt` (the compiler / test output behind the verdict, tail-truncated at 200 KB, absent
 on `PASS`). Records from such a run carry an extra `artifacts_dir` field holding that path
-relative to `--out`; the flag is off by default and adds nothing to the JSONL when unset. This is
+relative to `--out`; the flag is off by default and adds nothing to the JSONL when unset. Writing
+is coupled to the record: on `--resume` a repair-owed task re-runs attempt 0, that record is
+suppressed as a duplicate, and its artifacts are left alone so the two never describe different
+executions. This is
 what the failure gallery reads, so a run meant to feed it needs the flag set.
 
 **Reasoning settings are each CLI's out-of-the-box default.** Fairness here means "what you get

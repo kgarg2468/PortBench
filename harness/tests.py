@@ -423,6 +423,7 @@ def run_unit_tests() -> int:
 GOOD_ANSWER = ("Here is the translation.\n\n```rust\nuse std::fmt::Debug;\n\n"
                "pub fn answer(x: u32) -> u32 {\n    x + 2\n}\n```\n")
 PROSE_ANSWER = "I could not translate that function.\n"
+RETRY_ANSWER = GOOD_ANSWER.replace("x + 2", "x + 3")
 
 
 def _artifact_checks() -> list[bool]:
@@ -435,12 +436,10 @@ def _artifact_checks() -> list[bool]:
     from . import models
     from .run import ARTIFACT_ERROR_LIMIT, ResultsWriter, run_task
 
-    answers = [GOOD_ANSWER, PROSE_ANSWER]
-    served: list[str] = []
+    queue: list[str] = []
 
     def fake_call_model(model, prompt, timeout=None):
-        text = answers[min(len(served), len(answers) - 1)]
-        served.append(text)
+        text = queue.pop(0) if queue else PROSE_ANSWER
         return models.ModelResult(text, 10, 20, 30, 0.1, resolved_model="fake-model-1")
 
     # charset-normalizer expects 4 summaries; OK_OUTPUT carries 3 plus this failing one.
@@ -465,11 +464,22 @@ def _artifact_checks() -> list[bool]:
         models.call_model = fake_call_model                     # type: ignore[assignment]
         score.run_tests = lambda *a, **k: fail_run              # type: ignore[assignment]
         try:
+            queue[:] = [GOOD_ANSWER, PROSE_ANSWER]
             kept = ResultsWriter(out, "haiku", "kept", keep_artifacts=True)
             run_task(task, "haiku", "kept", root / "dataset", kept, 10, 10, True)
-            served.clear()
+
+            queue[:] = [GOOD_ANSWER, PROSE_ANSWER]
             plain = ResultsWriter(out, "haiku", "plain")
             run_task(task, "haiku", "plain", root / "dataset", plain, 10, 10, True)
+
+            # A run killed after attempt 0, then resumed: the repair-owed task re-runs from
+            # attempt 0, whose record is suppressed as a duplicate (REVIEW, PR #5).
+            queue[:] = [GOOD_ANSWER]
+            owed = ResultsWriter(out, "haiku", "owed", keep_artifacts=True)
+            run_task(task, "haiku", "owed", root / "dataset", owed, 10, 10, False)
+            queue[:] = [RETRY_ANSWER, PROSE_ANSWER]
+            resumed = ResultsWriter(out, "haiku", "owed", resume=True, keep_artifacts=True)
+            run_task(task, "haiku", "owed", root / "dataset", resumed, 10, 10, True)
         finally:
             models.call_model = real_call                       # type: ignore[assignment]
             score.run_tests = real_run_tests                    # type: ignore[assignment]
@@ -517,6 +527,21 @@ def _artifact_checks() -> list[bool]:
         checks.append(_check("  ...while the run still scored normally",
                              [r["verdict"] for r in plain_records],
                              [score.TEST_FAIL, score.EXTRACTION_ERROR]))
+
+        # Resume: the JSONL line for attempt 0 describes the FIRST execution, so the artifacts
+        # beside it must too -- a re-executed attempt 0 must not overwrite them.
+        owed_base = out / "haiku" / "owed.artifacts" / task.task_id
+        owed_records = [json.loads(l) for l in
+                        (out / "haiku" / "owed.jsonl").read_text().splitlines() if l.strip()]
+        checks.append(_check("resume: re-run attempt 0 keeps the recorded artifacts",
+                             owed_base.joinpath("attempt0", "answer.md").read_text(), GOOD_ANSWER))
+        checks.append(_check("  ...injected.rs too, not the re-run's code",
+                             "x + 3" in owed_base.joinpath("attempt0", "injected.rs").read_text(),
+                             False))
+        checks.append(_check("  ...while attempt 1 gets its own artifacts",
+                             owed_base.joinpath("attempt1", "answer.md").read_text(), PROSE_ANSWER))
+        checks.append(_check("  ...and attempt 0 is on record exactly once",
+                             [r["attempt"] for r in owed_records], [0, 1]))
 
         # A runaway panic loop can print megabytes; error.txt is capped.
         kept.record_artifacts("big-task", 0, answer="a", injected=None,
