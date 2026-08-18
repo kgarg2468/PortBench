@@ -252,11 +252,13 @@ reconstructed and nothing is invented. Both code panes carry an explicit placeho
 every entry is flagged `model_code_available: false` / `compiler_error_available: false`,
 with `code_capture: "unavailable"` at the top of the file.
 
-To get the real side-by-side experience the harness needs an artifact-capture flag —
-something like `--keep-artifacts DIR` writing `DIR/<run_id>/<task_id>-a<attempt>.{rs,err}`
-next to the JSONL, with the record carrying the relative paths. That is a harness change,
-out of scope for this directory. Until it lands, the gallery is an index of observed
-failures rather than a code exhibit.
+The harness now has that flag: `--keep-artifacts` (default off) writes
+`results/<model>/<run_id>.artifacts/<task_id>/attempt<N>/` with the raw answer, the
+injected Rust and the failure text, and the record carries `artifacts_dir` relative to the
+results root. Artifact directories are gitignored — raw answers can quote the (unlicensed)
+task prompt, so only curated snippets from permissively-licensed projects are ever
+published, via a gallery-capture pass that reads `artifacts_dir`. Until that pass runs,
+the gallery is an index of observed failures rather than a code exhibit.
 
 Selection is deterministic: up to 4 entries per bucket (attempt 0 first, then model, then
 task id), capped at 24 total, so no single bucket drowns the others.

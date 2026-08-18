@@ -5,3 +5,8 @@ dataset/
 *.log
 work/
 dataset2/
+
+# Raw per-attempt artifacts (--keep-artifacts): model answers can quote the
+# unlicensed RustRepoTrans prompt text, so raw captures never enter git.
+# Curated gallery snippets are extracted into site/data instead.
+results/*/*.artifacts/
