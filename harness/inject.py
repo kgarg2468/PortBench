@@ -1,10 +1,11 @@
 """Extract Rust from model output and inject it into the real project tree.
 
 Shape follows the paper's auto_test_rust.py (tree-sitter harvest of function_item /
-use_declaration nodes, de-dup against the dependency block, single str.replace of the
-reference body, use-lines inserted before the first top-level `use ...;`) but rewrites the
-`index != -1` None crash and never leaves the tree dirty: every injection restores in a
-finally block, and stale backups from a killed run are swept on startup.
+use_declaration nodes, de-dup against the dependency block, use-lines inserted before the first
+top-level `use ...;`) but rewrites the `index != -1` None crash, resolves the injection anchor
+through the AST instead of `str.replace`, refuses to inject an answer that does not contain the
+requested function, and never leaves the tree dirty: every injection restores in a finally
+block, and stale backups from a killed run are swept on startup.
 """
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ from pathlib import Path
 from tree_sitter import Language, Parser
 import tree_sitter_rust as ts_rust
 
+from . import rustast
 from .tasks import Task
 
 BACKUP_SUFFIX = ".portbench-bak"
@@ -118,6 +120,29 @@ def dedup_against_dependencies(extraction: Extraction, task: Task) -> list[str]:
     return kept
 
 
+def require_target_function(functions: list[str], task: Task) -> str:
+    """The answer must actually contain the function we asked for.
+
+    Without this, a response consisting only of a novel `fn helper()` is happily injected over
+    the target: the target disappears from the crate, and if nothing calls it the suite goes
+    green -- a PASS for a translation that was never written. Extra helper functions the model
+    emitted are kept and injected alongside; only the *absence* of the requested name is fatal.
+    """
+    target = _fn_name(task.target_signature)
+    if not target:
+        raise ExtractionError(
+            f"could not read a function name out of the task signature: "
+            f"{task.target_signature.strip()[:120]!r}"
+        )
+    harvested = [_fn_name(f) or "<anonymous>" for f in functions]
+    if target in harvested:
+        return target
+    raise ExtractionError(
+        f"model output does not define the requested function {target!r}; "
+        f"harvested {harvested}"
+    )
+
+
 def _insert_uses(content: str, uses: list[str]) -> str:
     missing = []
     for use in uses:
@@ -150,28 +175,86 @@ def sweep_backups(root: Path) -> list[str]:
     return restored
 
 
+# --------------------------------------------------------------------------------------
+# Anchor resolution
+# --------------------------------------------------------------------------------------
+
+_ORDINAL_RE = re.compile(r"__function__(\d+)$")
+
+
+def task_ordinal(task_id: str) -> int | None:
+    match = _ORDINAL_RE.search(task_id)
+    return int(match.group(1)) if match else None
+
+
+@dataclass(frozen=True)
+class Anchor:
+    start_byte: int
+    end_byte: int
+    matches: int          # how many AST nodes were byte-identical to the reference
+    resolved_by: str      # "unique" | "ordinal"
+
+
+def resolve_anchor(content: str, task: Task) -> Anchor:
+    """Locate the single `function_item` this task is about.
+
+    The paper's unanchored `str.replace(reference, answer)` rewrites *every* occurrence. Exactly
+    one task (`...iceberg...io__.rs__function__12`, `pub fn location`) has two byte-identical
+    occurrences -- `InputFile` and `OutputFile` -- so the paper scores the model on two edited
+    functions instead of the one it was asked about. When more than one node matches we pick by
+    the task id's `__function__N` ordinal against the file's `function_item` list, and never by
+    text replacement.
+    """
+    nodes = rustast.function_items(content)
+    reference = task.reference_rust_fn
+    matches = [i for i, node in enumerate(nodes) if node.text == reference]
+    if not matches:
+        normalized = rustast.normalize(reference)
+        matches = [i for i, node in enumerate(nodes)
+                   if rustast.normalize(node.text) == normalized]
+    if not matches:
+        raise ExtractionError(
+            f"reference function not found as an AST node in {task.target_rel}; cannot anchor"
+        )
+    if len(matches) == 1:
+        node = nodes[matches[0]]
+        return Anchor(node.start_byte, node.end_byte, 1, "unique")
+
+    # Measured across all 108 tasks: `__function__N` is a 1-based index into the file's
+    # `function_item` list for 93 of them and 0-based for 1, so 1-based is tried first.
+    ordinal = task_ordinal(task.task_id)
+    for index in ((ordinal - 1, ordinal) if ordinal is not None else ()):
+        if index in matches:
+            node = nodes[index]
+            return Anchor(node.start_byte, node.end_byte, len(matches), "ordinal")
+    raise ExtractionError(
+        f"{task.target_rel}: {len(matches)} byte-identical candidates for "
+        f"{task.task_id} and the ordinal does not select one of them"
+    )
+
+
 @contextmanager
 def injected(task: Task, functions: list[str], uses: list[str]):
     """Write the model's functions into the real source file; always restore.
 
-    Yields a dict of injection metadata (`anchor_count`, `ambiguous_anchor`).
+    Yields a dict of injection metadata (`anchor_count`, `ambiguous_anchor`, `anchor_resolved_by`).
     """
     path = task.target_path
     backup = Path(str(path) + BACKUP_SUFFIX)
     shutil.copyfile(path, backup)
     try:
         content = path.read_text(encoding="utf-8", errors="ignore")
-        anchor = task.reference_rust_fn
-        count = content.count(anchor)
-        if count == 0:
-            raise ExtractionError(
-                f"reference function not found verbatim in {task.target_rel}; cannot anchor"
-            )
+        anchor = resolve_anchor(content, task)
         replacement = "\n" + "\n".join(functions) + "\n"
-        content = content.replace(anchor, replacement)
+        content = rustast.replace_byte_range(
+            content, anchor.start_byte, anchor.end_byte, replacement)
         content = _insert_uses(content, uses)
         path.write_text(content, encoding="utf-8", errors="ignore")
-        yield {"anchor_count": count, "ambiguous_anchor": count > 1}
+        yield {
+            "anchor_count": anchor.matches,
+            "ambiguous_anchor": anchor.matches > 1,
+            "anchor_resolved_by": anchor.resolved_by,
+        }
     finally:
         shutil.copyfile(backup, path)
         backup.unlink(missing_ok=True)

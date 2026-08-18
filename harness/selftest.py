@@ -14,8 +14,9 @@ import sys
 import time
 from pathlib import Path
 
-from . import inject, score, tasks
-from .run import AttemptRecord, ResultsWriter, evaluate_output, _now
+from . import expected, inject, lock, score, tasks
+from .run import (AttemptRecord, ResultsWriter, RunIdCollision, evaluate_output, preflight,
+                  _now, _print_problems)
 
 SELF_TEST_TASKS = [
     # charset-normalizer
@@ -32,18 +33,40 @@ SELF_TEST_TASKS = [
 
 def run_self_test(args) -> int:
     dataset = tasks.ensure_dataset(Path(args.dataset))
+    run_id = args.run_id or f"selftest-{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}"
+    try:
+        writer = ResultsWriter(Path(args.out), "reference", run_id, resume=bool(args.resume))
+    except RunIdCollision as exc:
+        print(f"refusing to start: {exc}", file=sys.stderr)
+        return 2
+    try:
+        lock.acquire(dataset, run_id)
+    except lock.LockError as exc:
+        print(f"refusing to start: {exc}", file=sys.stderr)
+        return 2
+    try:
+        return _run_self_test(args, dataset, run_id, writer)
+    finally:
+        lock.release(dataset)
+
+
+def _run_self_test(args, dataset: Path, run_id: str, writer: ResultsWriter) -> int:
     restored = inject.sweep_backups(tasks.evaluate_root(dataset) / "projects")
     for path in restored:
         print(f"restored stale backup: {path}", file=sys.stderr)
 
-    all_tasks = {t.task_id: t for t in tasks.discover_tasks(dataset)}
+    discovered = tasks.discover_tasks(dataset)
+    all_tasks = {t.task_id: t for t in discovered}
     missing = [tid for tid in SELF_TEST_TASKS if tid not in all_tasks]
     if missing:
         print(f"self-test fixtures missing from dataset: {missing}", file=sys.stderr)
         return 1
 
-    run_id = args.run_id or f"selftest-{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}"
-    writer = ResultsWriter(Path(args.out), "reference", run_id)
+    problems = preflight(dataset, discovered)
+    if problems:
+        _print_problems(problems, "self-test aborted: dataset preflight failed")
+        return 1
+
     writer.write_meta({
         "run_id": run_id, "model": "reference", "started_at": _now(),
         "dataset_commit": tasks.dataset_commit(dataset), "dataset_path": str(dataset),
@@ -52,6 +75,7 @@ def run_self_test(args) -> int:
     })
 
     results = []
+    observed: dict[str, int] = {}
     for i, task_id in enumerate(SELF_TEST_TASKS, 1):
         task = all_tasks[task_id]
         # The fixture is exactly what a well-behaved model would return.
@@ -68,9 +92,15 @@ def run_self_test(args) -> int:
             task_content_hash=task.content_hash, baselined_failures=verdict.baselined,
             flaky_recovered=verdict.flaky_recovered,
             ambiguous_anchor=bool(info.get("ambiguous_anchor")),
+            anchor_resolved_by=str(info.get("anchor_resolved_by") or ""),
+            leak_stripped=task.leak_stripped,
             verdict_reason=verdict.reason,
             note="reference function injected as model output",
         ))
+        # A green reference run is by definition a full run of that project's suite, so it is
+        # also a valid snapshot of how many test targets the project has (see harness/expected).
+        if verdict.verdict == score.PASS and verdict.summaries:
+            observed[task.project] = max(observed.get(task.project, 0), len(verdict.summaries))
         status = "PASS" if verdict.verdict == score.PASS else verdict.verdict
         detail = ""
         if verdict.failing_tests:
@@ -82,6 +112,22 @@ def run_self_test(args) -> int:
 
     passed = sum(1 for _, v in results if v.verdict == score.PASS)
     print(f"\nself-test: {passed}/{len(results)} PASS  ->  {writer.jsonl}")
+
+    for project, count in sorted(observed.items()):
+        known = expected.expected(project)
+        if known is None:
+            try:
+                expected.record(project, count)
+            except expected.SnapshotRefused as exc:
+                print(f"{project}: {exc}", file=sys.stderr)
+                continue
+            print(f"snapshotted {project}: {count} test-target summaries "
+                  f"-> {expected.CACHE_PATH.name}")
+        elif known != count:
+            print(f"WARNING: {project} produced {count} test-target summaries, "
+                  f"snapshot says {known}", file=sys.stderr)
+        else:
+            print(f"{project}: {count} test-target summaries (matches snapshot)")
 
     # Belt and braces: the working tree must be byte-identical to how we found it.
     leftovers = list((tasks.evaluate_root(dataset) / "projects").rglob("*" + inject.BACKUP_SUFFIX))
