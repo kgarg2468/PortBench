@@ -1,6 +1,6 @@
 {
   "project": "PortBench",
-  "updated": "2026-08-18T12:40:00Z",
+  "updated": "2026-08-18T13:20:00Z",
   "nodes": [
     {
       "id": "spike",
@@ -58,8 +58,8 @@
     {
       "id": "run_claude",
       "label": "Full run: Claude family",
-      "status": "blocked",
-      "note": "108 tasks x Fable 5, Opus 5, Sonnet 5, Haiku 4.5 via claude -p (one-shot + repair)",
+      "status": "running",
+      "note": "Lane A on dataset/: fable -> opus -> sonnet -> haiku, 108 tasks each, one-shot + repair. Est. 13-17h.",
       "deps": [
         "smoke",
         "gpt_review",
@@ -70,8 +70,8 @@
     {
       "id": "run_gpt",
       "label": "Full run: GPT family",
-      "status": "blocked",
-      "note": "108 tasks x GPT-5.6 Sol, Terra, Luna, GPT-5.5 via codex exec",
+      "status": "running",
+      "note": "Lane B on dataset2/ (APFS clone): sol -> terra -> luna -> gpt-5.5. Est. 13-17h.",
       "deps": [
         "smoke",
         "gpt_review",
@@ -148,8 +148,8 @@
     {
       "id": "calibration",
       "label": "Mutation calibration\n(does each task's test bite?)",
-      "status": "running",
-      "note": "Queued behind smoke2 in same background chain; unimplemented!() into each of 108 tasks; suite must fail or task is uncovered",
+      "status": "done",
+      "note": "100/108 covered. 8 uncovered (7 iceberg glue-catalog + 1 datafusion; tests need docker services make unit-test never starts) -> excluded via results/exclusions.json. Effective N=100.",
       "deps": [
         "harness_fixes",
         "fixes_pr"
@@ -158,8 +158,8 @@
     {
       "id": "smoke2",
       "label": "Smoke rerun\n(post-fix, fresh run-ids)",
-      "status": "running",
-      "note": "2 haiku + 2 sol tasks through the isolated no-tools path; first codex e2e",
+      "status": "done",
+      "note": "Both adapters green through isolated path; repair round exercised on both families",
       "deps": [
         "harness_fixes",
         "fixes_pr"

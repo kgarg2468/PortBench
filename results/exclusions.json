@@ -1,0 +1,25 @@
+{
+  "description": "Tasks excluded from leaderboard scoring, with reasons. Raw run JSONL still contains them; aggregation must filter by this file.",
+  "calibration_run": "calibration-01",
+  "uncovered": {
+    "reason": "Mutation calibration: suite still passes with the target function replaced by unimplemented!(), so these tasks cannot distinguish a correct solution from a stub. Root cause: their tests require docker-compose services (glue/hms/datafusion catalogs) that the paper's `make unit-test` never starts.",
+    "tasks": [
+      "projects__iceberg__rust__crates__catalog__glue__src__catalog__.rs__function__4.txt",
+      "projects__iceberg__rust__crates__catalog__glue__src__catalog__.rs__function__5.txt",
+      "projects__iceberg__rust__crates__catalog__glue__src__catalog__.rs__function__9.txt",
+      "projects__iceberg__rust__crates__catalog__glue__src__catalog__.rs__function__10.txt",
+      "projects__iceberg__rust__crates__catalog__glue__src__catalog__.rs__function__11.txt",
+      "projects__iceberg__rust__crates__catalog__glue__src__catalog__.rs__function__13.txt",
+      "projects__iceberg__rust__crates__catalog__glue__src__catalog__.rs__function__15.txt",
+      "projects__iceberg__rust__crates__integrations__datafusion__src__table__.rs__function__1.txt"
+    ]
+  },
+  "leak_stripped_not_excluded": {
+    "reason": "These two tasks embedded the reference Rust body in their dependency block; the harness strips the exact AST node from the prompt at load time, so they remain scoreable. Disclosed for transparency.",
+    "tasks": [
+      "projects__iceberg__rust__crates__catalog__glue__src__catalog__.rs__function__11.txt",
+      "projects__iceberg__rust__crates__iceberg__src__writer__base_writer__data_file_writer__.rs__function__4.txt"
+    ]
+  },
+  "effective_task_count": 100
+}
