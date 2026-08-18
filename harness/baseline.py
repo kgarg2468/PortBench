@@ -30,8 +30,19 @@ BASELINE_FAILURES: dict[str, frozenset[str]] = {
 
 # Known-flaky test names. If one of these is the only thing standing between a task and a
 # PASS, re-run it by name before letting it count. Not allowlisted: see the module docstring.
+#
+# The three additions were identified after the first full sweep: with two lanes of cargo
+# builds loading the machine, each failed across 12-28 tasks in unrelated crates and for
+# every model, while genuinely model-caused failures cluster on one or two tasks. All are
+# timing-sensitive connection tests.
 FLAKY_TESTS: frozenset[str] = frozenset(
-    {"connection::tests::idle_timeout_with_keep_alive_no"}  # libp2p-swarm, timing flake
+    {
+        "connection::tests::idle_timeout_with_keep_alive_no",  # libp2p-swarm, timing flake
+        "ping_pong",                                           # libp2p-swarm integration, timing
+        "connect",                                             # libp2p connection test, timing
+        "bootstrap::tests::given_periodic_bootstrap_when_routing_table_updated_"
+        "then_wont_bootstrap_until_next_interval",             # libp2p-kad, interval timing
+    }
 )
 
 FLAKY_RETRIES = 3
