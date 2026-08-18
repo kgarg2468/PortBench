@@ -1,0 +1,11 @@
+{
+  "description": "Synthetic exclusions for analysis/tests.py. Task ids carry the .txt suffix that the real exclusions.json uses and the harness records do not, so loading this exercises the id normalisation.",
+  "uncovered": {
+    "reason": "Synthetic: pretend these two cannot distinguish a correct solution from a stub.",
+    "tasks": [
+      "T_EXCL_1.txt",
+      "T_EXCL_2.txt"
+    ]
+  },
+  "effective_task_count": 9
+}

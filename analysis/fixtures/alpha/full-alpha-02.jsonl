@@ -1,0 +1,1 @@
+{"run_id": "full-alpha-02", "model": "fable", "task_id": "T_BACKFILL", "project": "demo", "attempt": 0, "verdict": "PASS", "error_class_hint": [], "failing_tests": [], "tokens_in": 1000, "tokens_out": 500, "duration_s": 10.0}
