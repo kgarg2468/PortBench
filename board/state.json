@@ -1,6 +1,6 @@
 {
   "project": "PortBench",
-  "updated": "2026-08-18T18:20:00Z",
+  "updated": "2026-08-18T19:10:00Z",
   "nodes": [
     {
       "id": "spike",
@@ -99,7 +99,8 @@
       "deps": [
         "taxonomy",
         "site_scaffold",
-        "site_pr"
+        "site_pr",
+        "gallery_capture"
       ]
     },
     {
@@ -190,7 +191,7 @@
       "id": "aggregator",
       "label": "Aggregator\n(JSONL -> site data + taxonomy)",
       "status": "running",
-      "note": "Opus worker: results/*.jsonl + exclusions.json -> leaderboard/taxonomy/trend/gallery JSON; rustc-code bucket map",
+      "note": "PR #4 open: 38/38 tests, deterministic. Real dry run: fable 79/90, opus 82/95 (12 no-data), sol 58/82, terra 55/77. VERIFIED: zero borrow-checker codes in all raw data \u2014 headline inverts. 2 Greptile fixes in flight.",
       "deps": [
         "calibration",
         "site_pr"
@@ -203,6 +204,15 @@
       "note": "12 opus tasks (+1 repair) hit TRANSPORT_ERROR; rerun targeted, merge in aggregation",
       "deps": [
         "run_claude"
+      ]
+    },
+    {
+      "id": "gallery_capture",
+      "label": "Gallery capture\n(--keep-artifacts + subset rerun)",
+      "status": "blocked",
+      "note": "Harness drops model code after scoring; gallery needs artifacts. Add flag + rerun ~15 failed tasks across models.",
+      "deps": [
+        "aggregator"
       ]
     }
   ]
