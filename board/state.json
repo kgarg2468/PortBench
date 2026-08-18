@@ -1,6 +1,6 @@
 {
   "project": "PortBench",
-  "updated": "2026-08-18T11:55:00Z",
+  "updated": "2026-08-18T12:40:00Z",
   "nodes": [
     {
       "id": "spike",
@@ -148,8 +148,8 @@
     {
       "id": "calibration",
       "label": "Mutation calibration\n(does each task's test bite?)",
-      "status": "blocked",
-      "note": "Inject panic!() per task; suite must fail, else task marked uncovered + excluded/disclosed. ~2.4h background.",
+      "status": "running",
+      "note": "Queued behind smoke2 in same background chain; unimplemented!() into each of 108 tasks; suite must fail or task is uncovered",
       "deps": [
         "harness_fixes",
         "fixes_pr"
@@ -158,8 +158,8 @@
     {
       "id": "smoke2",
       "label": "Smoke rerun\n(post-fix, fresh run-ids)",
-      "status": "blocked",
-      "note": "Re-validates pipeline after P0 fix; first smoke's scores are void (models had fs access)",
+      "status": "running",
+      "note": "2 haiku + 2 sol tasks through the isolated no-tools path; first codex e2e",
       "deps": [
         "harness_fixes",
         "fixes_pr"
@@ -168,8 +168,8 @@
     {
       "id": "fixes_pr",
       "label": "Fixes PR\n(Greptile review + merge)",
-      "status": "running",
-      "note": "PR #2 awaiting Greptile",
+      "status": "done",
+      "note": "3 more Greptile findings (lock TOCTOU, resume completeness, snapshot integrity) fixed; 82/82 unit tests; merged as f48b770",
       "deps": [
         "harness_fixes"
       ]
