@@ -1,6 +1,6 @@
 {
   "project": "PortBench",
-  "updated": "2026-08-18T08:55:00Z",
+  "updated": "2026-08-18T09:15:00Z",
   "nodes": [
     {
       "id": "spike",
@@ -12,8 +12,8 @@
     {
       "id": "spike_finish",
       "label": "Spike finish\n(baseline failures + SPIKE.md)",
-      "status": "running",
-      "note": "Fresh Opus worker: no-fail-fast baseline enumeration, task anatomy, prompt stats, gate verdicts",
+      "status": "done",
+      "note": "Both gates PASS. 108 tasks confirmed (33/44/31). 4 baseline libp2p failures (3 env, 1 flaky) -> allowlist. Paper's success predicate unsound; harness must fix. SPIKE.md written.",
       "deps": [
         "spike"
       ]
@@ -37,8 +37,8 @@
     {
       "id": "harness",
       "label": "Harness\n(task in \u2192 cargo verdict out)",
-      "status": "blocked",
-      "note": "One-shot prompt + one repair round (compiler error fed back). Logs tokens per task. Results land as versioned JSON in repo.",
+      "status": "running",
+      "note": "Opus worker building harness/ per SPIKE.md (f): parse+inject+score with baseline subtraction, repair round, token logging, reference self-test. Lands as PR #1.",
       "deps": [
         "spike_finish",
         "scaffold"
@@ -51,7 +51,8 @@
       "note": "Proves end-to-end before burning full runs",
       "deps": [
         "harness",
-        "cli_probe"
+        "cli_probe",
+        "harness_pr"
       ]
     },
     {
@@ -99,6 +100,15 @@
       "deps": [
         "taxonomy",
         "site"
+      ]
+    },
+    {
+      "id": "harness_pr",
+      "label": "Harness PR\n(Greptile review + merge)",
+      "status": "blocked",
+      "note": "PR #1 reviewed by Greptile; findings addressed before merge",
+      "deps": [
+        "harness"
       ]
     }
   ]
