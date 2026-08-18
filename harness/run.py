@@ -19,10 +19,14 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import inject, models, score, tasks
+from . import expected, inject, lock, models, score, tasks
 from .tasks import Task
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+
+
+class RunIdCollision(RuntimeError):
+    pass
 
 
 @dataclass
@@ -46,19 +50,68 @@ class AttemptRecord:
     baselined_failures: list[str] = field(default_factory=list)
     flaky_recovered: list[str] = field(default_factory=list)
     ambiguous_anchor: bool = False
+    anchor_resolved_by: str = ""
     transport_retried: bool = False
+    resolved_model: str = ""
+    leak_stripped: bool = False
     verdict_reason: str = ""
     note: str = ""
 
 
 class ResultsWriter:
-    def __init__(self, out_root: Path, model: str, run_id: str):
+    """One run id, one pair of result files.
+
+    Reusing a run id used to append fresh attempts to the old JSONL while *overwriting* the
+    metadata, so the meta said "2 tasks" over a file holding records from an unrelated earlier
+    run -- and every leaderboard denominator computed from that pair was wrong. A run id that
+    already exists is now refused outright; `--resume` opts into appending, and then only the
+    (task_id, attempt) pairs that are actually missing.
+    """
+
+    def __init__(self, out_root: Path, model: str, run_id: str, resume: bool = False):
         self.dir = Path(out_root) / model
         self.dir.mkdir(parents=True, exist_ok=True)
         self.jsonl = self.dir / f"{run_id}.jsonl"
         self.meta = self.dir / f"{run_id}.meta.json"
+        self.resume = resume
+        self.existing: set[tuple[str, int]] = set()
+
+        present = [p for p in (self.jsonl, self.meta) if p.exists()]
+        if present and not resume:
+            raise RunIdCollision(
+                f"run id {run_id!r} already exists for model {model!r}: "
+                f"{', '.join(str(p) for p in present)}. "
+                "Pick a new --run-id, or pass --resume to append only the missing attempts."
+            )
+        if resume:
+            self.existing = self._load_existing()
+
+    def _load_existing(self) -> set[tuple[str, int]]:
+        seen: set[tuple[str, int]] = set()
+        if not self.jsonl.exists():
+            return seen
+        for line in self.jsonl.read_text(encoding="utf-8", errors="ignore").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            task_id = record.get("task_id")
+            attempt = record.get("attempt")
+            if isinstance(task_id, str) and isinstance(attempt, int):
+                seen.add((task_id, attempt))
+        return seen
+
+    def done_task_ids(self) -> set[str]:
+        return {task_id for task_id, _ in self.existing}
 
     def write(self, record: AttemptRecord) -> None:
+        key = (record.task_id, record.attempt)
+        if key in self.existing:
+            return                                   # resume: already on record, never duplicate
+        self.existing.add(key)
         with self.jsonl.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(asdict(record), sort_keys=True) + "\n")
 
@@ -72,21 +125,27 @@ def _now() -> str:
 
 def evaluate_output(task: Task, model_text: str, dataset: Path,
                     test_timeout: int) -> tuple[score.Verdict, dict, float]:
-    """Extract -> inject -> test -> score. Always restores the tree."""
+    """Extract -> inject -> test -> score. Always restores the tree.
+
+    Scoring happens *inside* the injection context. It used to run after the `with` block had
+    already restored the reference file, so the flaky-retry rerun inside `score.score` was
+    re-running the reference implementation rather than the model's.
+    """
     proj_dir = tasks.project_dir(dataset, task.project)
     try:
         extraction = inject.extract(model_text)
         functions = inject.dedup_against_dependencies(extraction, task)
+        inject.require_target_function(functions, task)
     except inject.ExtractionError as exc:
         return score.Verdict(score.EXTRACTION_ERROR, error_text=str(exc)), {}, 0.0
 
     try:
         with inject.injected(task, functions, extraction.uses) as info:
             run = score.run_tests(proj_dir, score.TEST_COMMANDS[task.project], timeout=test_timeout)
+            verdict = score.score(task.project, proj_dir, run, timeout=test_timeout)
     except inject.ExtractionError as exc:
         return score.Verdict(score.EXTRACTION_ERROR, error_text=str(exc)), {}, 0.0
 
-    verdict = score.score(task.project, proj_dir, run, timeout=test_timeout)
     return verdict, info, run.duration_s
 
 
@@ -123,7 +182,10 @@ def run_task(task: Task, model: str, run_id: str, dataset: Path, writer: Results
             task_content_hash=task.content_hash,
             baselined_failures=verdict.baselined, flaky_recovered=verdict.flaky_recovered,
             ambiguous_anchor=bool(info.get("ambiguous_anchor")),
+            anchor_resolved_by=str(info.get("anchor_resolved_by") or ""),
             transport_retried=result.retried,
+            resolved_model=result.resolved_model,
+            leak_stripped=task.leak_stripped,
             verdict_reason=verdict.reason,
         ))
         print(f"  attempt={attempt} {verdict.verdict} "
@@ -151,48 +213,182 @@ def cmd_list(dataset: Path) -> int:
     return 0
 
 
+def anchor_problems(all_tasks: list[Task]) -> list[str]:
+    """Every task whose reference function can no longer be located in the tree."""
+    problems: list[str] = []
+    cache: dict[Path, str] = {}
+    for task in all_tasks:
+        content = cache.get(task.target_path)
+        if content is None:
+            try:
+                content = task.target_path.read_text(encoding="utf-8", errors="ignore")
+            except OSError as exc:
+                problems.append(f"{task.task_id}: cannot read {task.target_rel}: {exc}")
+                continue
+            cache[task.target_path] = content
+        try:
+            inject.resolve_anchor(content, task)
+        except inject.ExtractionError as exc:
+            problems.append(f"{task.task_id}: {exc}")
+    return problems
+
+
+def preflight(dataset: Path, all_tasks: list[Task]) -> list[str]:
+    """Everything that must be true before the first model call.
+
+    Drift in the dataset checkout, another runner's in-flight injection, or an anchor that no
+    longer resolves all show up downstream as *model* failures. They are harness state, so the
+    run aborts instead of recording them against a model.
+    """
+    return tasks.dataset_problems(dataset) + anchor_problems(all_tasks)
+
+
+def _print_problems(problems: list[str], header: str) -> None:
+    print(header, file=sys.stderr)
+    for problem in problems:
+        print(f"  - {problem}", file=sys.stderr)
+
+
 def cmd_run(args) -> int:
     dataset = tasks.ensure_dataset(Path(args.dataset))
-    restored = inject.sweep_backups(tasks.evaluate_root(dataset) / "projects")
-    for path in restored:
-        print(f"restored stale backup: {path}", file=sys.stderr)
+    run_id = args.run_id or f"run-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}"
 
+    # Fail on a run-id collision before taking the lock or touching the tree.
+    try:
+        writer = ResultsWriter(Path(args.out), args.model, run_id, resume=args.resume)
+    except RunIdCollision as exc:
+        print(f"refusing to start: {exc}", file=sys.stderr)
+        return 2
+
+    try:
+        lock.acquire(dataset, run_id)
+    except lock.LockError as exc:
+        print(f"refusing to start: {exc}", file=sys.stderr)
+        return 2
+
+    try:
+        restored = inject.sweep_backups(tasks.evaluate_root(dataset) / "projects")
+        for path in restored:
+            print(f"restored stale backup: {path}", file=sys.stderr)
+
+        all_tasks = tasks.discover_tasks(dataset)
+        problems = preflight(dataset, all_tasks)
+        if problems:
+            _print_problems(problems, "refusing to start: dataset preflight failed")
+            return 2
+
+        selected = tasks.select(all_tasks, args.project, args.tasks, args.limit)
+        excluded = [t.task_id for t in selected if t.excluded_leak]
+        selected = [t for t in selected if not t.excluded_leak]
+        stripped = [t.task_id for t in selected if t.leak_stripped]
+        if excluded:
+            print(f"excluded {len(excluded)} task(s) whose prompt still leaks the reference: "
+                  f"{excluded}", file=sys.stderr)
+        if args.resume:
+            done = writer.done_task_ids()
+            skipped = [t.task_id for t in selected if t.task_id in done]
+            selected = [t for t in selected if t.task_id not in done]
+            if skipped:
+                print(f"resume: {len(skipped)} task(s) already recorded, skipping", flush=True)
+        if not selected:
+            print("no tasks selected", file=sys.stderr)
+            return 2
+
+        meta = {
+            "run_id": run_id, "model": args.model, "started_at": _now(),
+            "dataset_commit": tasks.dataset_commit(dataset), "dataset_path": str(dataset),
+            "cli_versions": models.cli_versions(),
+            "model_argv": models.argv_preview(args.model),
+            "settings": {
+                "reasoning": "cli default (out of the box)",
+                "model_timeout_s": args.model_timeout, "test_timeout_s": args.test_timeout,
+                "repair_round": not args.no_repair,
+                "resume": bool(args.resume),
+                "test_commands": score.TEST_COMMANDS,
+                "expected_summaries": expected.load(),
+                "model_calls_isolated": True,
+            },
+            "leak_stripped_task_ids": stripped,
+            "excluded_leak_task_ids": excluded,
+            "task_ids": [t.task_id for t in selected],
+            "n_tasks": len(selected),
+        }
+        writer.write_meta(meta)
+
+        tally: dict[str, int] = {}
+        for i, task in enumerate(selected, 1):
+            print(f"[{i}/{len(selected)}] {task.project} {task.task_id}", flush=True)
+            verdict = run_task(task, args.model, run_id, dataset, writer,
+                               args.model_timeout, args.test_timeout, not args.no_repair)
+            tally[verdict] = tally.get(verdict, 0) + 1
+
+        meta["ended_at"] = _now()
+        meta["final_verdict_tally"] = tally
+        writer.write_meta(meta)
+        print(f"\n{run_id}: " + "  ".join(f"{k}={v}" for k, v in sorted(tally.items())))
+        print(f"results -> {writer.jsonl}")
+        return 0
+    finally:
+        lock.release(dataset)
+
+
+def cmd_calibrate(args) -> int:
+    """Mutation probe: replace a task's function with `unimplemented!()` and see if tests notice.
+
+    A task only measures translation quality if the project's suite actually exercises the
+    function. This mode reports that for one task at a time; deciding what to do with a task
+    whose suite stays green is a separate stage, not this harness's job.
+    """
+    dataset = tasks.ensure_dataset(Path(args.dataset))
     all_tasks = tasks.discover_tasks(dataset)
     selected = tasks.select(all_tasks, args.project, args.tasks, args.limit)
     if not selected:
         print("no tasks selected", file=sys.stderr)
         return 2
 
-    run_id = args.run_id or f"run-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}"
-    writer = ResultsWriter(Path(args.out), args.model, run_id)
-    meta = {
-        "run_id": run_id, "model": args.model, "started_at": _now(),
-        "dataset_commit": tasks.dataset_commit(dataset), "dataset_path": str(dataset),
-        "cli_versions": models.cli_versions(),
-        "settings": {
-            "reasoning": "cli default (out of the box)",
-            "model_timeout_s": args.model_timeout, "test_timeout_s": args.test_timeout,
-            "repair_round": not args.no_repair,
-            "test_commands": score.TEST_COMMANDS,
-        },
-        "task_ids": [t.task_id for t in selected],
-        "n_tasks": len(selected),
-    }
-    writer.write_meta(meta)
+    try:
+        lock.acquire(dataset, f"calibrate-{datetime.now(timezone.utc).strftime('%H%M%S')}")
+    except lock.LockError as exc:
+        print(f"refusing to start: {exc}", file=sys.stderr)
+        return 2
+    try:
+        uncovered = []
+        for i, task in enumerate(selected, 1):
+            mutant = f"```rust\n{task.target_signature.rstrip()} {{\n    unimplemented!()\n}}\n```\n"
+            verdict, _info, _test_s = evaluate_output(task, mutant, dataset, args.test_timeout)
+            covered = verdict.verdict != score.PASS
+            if not covered:
+                uncovered.append(task.task_id)
+            print(f"[{i}/{len(selected)}] {'COVERED    ' if covered else 'NOT COVERED'} "
+                  f"{verdict.verdict:16s} {task.task_id}", flush=True)
+        print(f"\ncalibrate: {len(selected) - len(uncovered)}/{len(selected)} covered")
+        for task_id in uncovered:
+            print(f"  suite still passes with unimplemented!(): {task_id}")
+        return 0
+    finally:
+        lock.release(dataset)
 
-    tally: dict[str, int] = {}
-    for i, task in enumerate(selected, 1):
-        print(f"[{i}/{len(selected)}] {task.project} {task.task_id}", flush=True)
-        verdict = run_task(task, args.model, run_id, dataset, writer,
-                           args.model_timeout, args.test_timeout, not args.no_repair)
-        tally[verdict] = tally.get(verdict, 0) + 1
 
-    meta["ended_at"] = _now()
-    meta["final_verdict_tally"] = tally
-    writer.write_meta(meta)
-    print(f"\n{run_id}: " + "  ".join(f"{k}={v}" for k, v in sorted(tally.items())))
-    print(f"results -> {writer.jsonl}")
-    return 0
+def cmd_snapshot_targets(args) -> int:
+    """Record how many `test result:` summaries each project prints on the unmodified tree."""
+    dataset = tasks.ensure_dataset(Path(args.dataset))
+    projects = ([args.project] if args.project else sorted(score.TEST_COMMANDS))
+    try:
+        lock.acquire(dataset, "snapshot-targets")
+    except lock.LockError as exc:
+        print(f"refusing to start: {exc}", file=sys.stderr)
+        return 2
+    try:
+        for project in projects:
+            run = score.run_tests(tasks.project_dir(dataset, project),
+                                  score.TEST_COMMANDS[project], timeout=args.test_timeout)
+            count = len(score.parse_summaries(run))
+            expected.record(project, count)
+            print(f"{project}: {count} test-target summaries (rc={run.returncode})")
+        print(f"recorded -> {expected.CACHE_PATH}")
+        return 0
+    finally:
+        lock.release(dataset)
 
 
 def cmd_baseline(args) -> int:
@@ -220,6 +416,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--model-timeout", type=int, default=models.DEFAULT_TIMEOUT)
     p.add_argument("--test-timeout", type=int, default=score.DEFAULT_TEST_TIMEOUT)
     p.add_argument("--no-repair", action="store_true", help="skip the repair round")
+    p.add_argument("--resume", action="store_true",
+                   help="append to an existing run id, skipping attempts already recorded")
+    p.add_argument("--calibrate", action="store_true",
+                   help="inject unimplemented!() into the selected tasks and report whether "
+                        "the suite notices; no model calls")
+    p.add_argument("--snapshot-targets", action="store_true",
+                   help="record each project's test-target summary count on the unmodified tree")
     p.add_argument("--self-test", action="store_true",
                    help="inject reference functions as if they were model output; no model calls")
     p.add_argument("--unit-test", action="store_true",
@@ -237,13 +440,19 @@ def main(argv: list[str] | None = None) -> int:
         return run_unit_tests()
     if args.list:
         return cmd_list(tasks.ensure_dataset(Path(args.dataset)))
+    if args.snapshot_targets:
+        return cmd_snapshot_targets(args)
+    if args.calibrate:
+        return cmd_calibrate(args)
     if args.self_test:
         from .selftest import run_self_test
         return run_self_test(args)
     if args.baseline:
         return cmd_baseline(args)
     if not args.model:
-        build_parser().error("--model is required (or use --list / --self-test / --baseline)")
+        build_parser().error(
+            "--model is required (or use --list / --self-test / --calibrate / "
+            "--snapshot-targets / --baseline)")
     return cmd_run(args)
 
 

@@ -14,6 +14,8 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
+from . import rustast
+
 DATASET_REPO = "https://github.com/SYSUSELab/RustRepoTrans"
 # Pinned to the commit of the working clone this harness was developed against.
 DATASET_COMMIT = "7026a8a9c8d4a524cbb554ff9b8100df4020114c"
@@ -47,6 +49,8 @@ class Task:
     dep_decls: str
     dep_uses: str
     content_hash: str     # sha256 over both source files; never store task text
+    leak_stripped: bool = False   # the reference body was quoted in dep_decls and was removed
+    excluded_leak: bool = False   # ...and removing it did not work; task must not be scored
 
 
 def _decode_target_rel(task_id: str) -> str:
@@ -97,6 +101,87 @@ def dataset_commit(dataset: Path) -> str:
         return "unknown"
 
 
+# --------------------------------------------------------------------------------------
+# Reference leakage
+# --------------------------------------------------------------------------------------
+
+def contains_reference(text: str, reference: str) -> bool:
+    """Is the complete reference function body quoted inside `text`?
+
+    Whitespace-insensitive: the benchmark's dependency blocks re-indent what they quote, so a
+    plain substring test misses real leaks.
+    """
+    if not (text or "").strip() or not (reference or "").strip():
+        return False
+    return rustast.normalize(reference) in rustast.normalize(text)
+
+
+def strip_leaked_reference(dep_decls: str, reference: str) -> tuple[str, bool]:
+    """Remove the target's own `function_item` from a dependency block.
+
+    A handful of the benchmark's dependency files quote the *answer*: the full reference Rust
+    body sits in the "function dependencies and data type declarations" slot, so the prompt
+    hands the model the translation it is being asked to produce. The declaration is a complete
+    AST node, so it can be excised exactly, leaving every genuine dependency intact.
+
+    Returns (new_dep_decls, stripped).
+    """
+    if not (dep_decls or "").strip() or not (reference or "").strip():
+        return dep_decls, False
+    normalized = rustast.normalize(reference)
+    ranges = [
+        (node.start_byte, node.end_byte)
+        for node in rustast.function_items(dep_decls)
+        if rustast.normalize(node.text) == normalized
+    ]
+    if not ranges:
+        return dep_decls, False
+
+    blob = dep_decls.encode("utf-8")
+    out = bytearray()
+    previous = 0
+    for start, end in sorted(ranges):
+        if start < previous:
+            continue
+        out += blob[previous:start]
+        previous = end
+    out += blob[previous:]
+    return out.decode("utf-8", "ignore"), True
+
+
+def tracked_modifications(dataset: Path) -> list[str]:
+    """Tracked files that differ from HEAD (untracked files, e.g. target/, are ignored)."""
+    try:
+        out = subprocess.run(
+            ["git", "status", "--porcelain", "--untracked-files=no"],
+            cwd=dataset, capture_output=True, text=True, check=True,
+        )
+    except Exception as exc:                        # noqa: BLE001 - reported, not raised
+        return [f"could not run git status: {exc}"]
+    return [line for line in out.stdout.splitlines() if line.strip()]
+
+
+def dataset_problems(dataset: Path) -> list[str]:
+    """Everything wrong with the dataset checkout, as human-readable lines.
+
+    An unpinned or dirty tree turns a harness bug (or another runner's in-flight injection)
+    into what looks like a model failure, so a run aborts rather than scoring against it.
+    """
+    problems: list[str] = []
+    head = dataset_commit(dataset)
+    if head != DATASET_COMMIT:
+        problems.append(f"dataset HEAD is {head}, expected pinned {DATASET_COMMIT}")
+
+    backups = sorted(str(p) for p in (evaluate_root(dataset) / "projects").rglob("*.portbench-bak"))
+    if backups:
+        problems.append(f"{len(backups)} leftover *.portbench-bak file(s): {backups[:3]}")
+
+    dirty = tracked_modifications(dataset)
+    if dirty:
+        problems.append(f"{len(dirty)} modified tracked file(s): {dirty[:5]}")
+    return problems
+
+
 def _load_task(dataset: Path, project: str, filename: str) -> Task:
     root = evaluate_root(dataset)
     pair_file = root / PAIR_DIR / project / LANG_PAIR / filename
@@ -127,6 +212,12 @@ def _load_task(dataset: Path, project: str, filename: str) -> Task:
         raise TaskError(f"{project}/{filename}: decoded target {target_rel} does not exist")
 
     digest = hashlib.sha256(pair_bytes + b"\x00" + dep_bytes).hexdigest()
+
+    # Load-time leak check: the dependency block must not quote the answer.
+    dep_decls, stripped = strip_leaked_reference(dep_records[0], reference)
+    dep_uses = dep_records[1]
+    excluded = contains_reference(dep_decls, reference) or contains_reference(dep_uses, reference)
+
     return Task(
         task_id=task_id,
         project=project,
@@ -136,9 +227,11 @@ def _load_task(dataset: Path, project: str, filename: str) -> Task:
         python_src_fn=python_fn,
         # Paper's signature slot: reference function text truncated at the first '{'.
         target_signature=reference.split("{")[0],
-        dep_decls=dep_records[0],
-        dep_uses=dep_records[1],
+        dep_decls=dep_decls,
+        dep_uses=dep_uses,
         content_hash=digest,
+        leak_stripped=stripped,
+        excluded_leak=excluded,
     )
 
 

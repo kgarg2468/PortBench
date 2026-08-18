@@ -15,7 +15,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import baseline
+from . import baseline, expected
 
 # SPIKE (d)+(f): workspace-wide, never fail-fast. `-p <crate>` narrowing is not usable here
 # because workspace feature unification changes what compiles.
@@ -39,6 +39,14 @@ TIMEOUT = "TIMEOUT"
 _FAILED_TEST_RE = re.compile(r"^test (.+?) \.\.\. FAILED\s*$", re.M)
 _SUMMARY_RE = re.compile(
     r"^test result: (ok|FAILED)\. (\d+) passed; (\d+) failed; (\d+) ignored", re.M
+)
+# Every test binary brackets its own output with these two lines, which is the only
+# per-target segmentation available: cargo's own `Running <target>` lines go to stderr while
+# the binary's test lines go to stdout, so the two cannot be interleaved back together.
+_RUNNING_RE = re.compile(r"^running (\d+) tests?\s*$")
+_FAILED_LINE_RE = re.compile(r"^test (.+?) \.\.\. FAILED\s*$")
+_SUMMARY_LINE_RE = re.compile(
+    r"^test result: (ok|FAILED)\. (\d+) passed; (\d+) failed; (\d+) ignored"
 )
 _ERROR_CODE_RE = re.compile(r"error\[(E\d{4})\]")
 # cargo prints one of these per test target that did not come back clean.
@@ -135,6 +143,50 @@ def parse_summaries(run: TestRun) -> list[tuple[str, int, int, int]]:
     ]
 
 
+@dataclass
+class TestBlock:
+    """One test binary's output: `running N tests` ... `test result: ...`."""
+
+    declared: int = 0
+    failures: list[str] = field(default_factory=list)
+    summary: tuple[str, int, int, int] | None = None
+
+
+def parse_blocks(run: TestRun) -> list[TestBlock]:
+    """Segment the output per test binary.
+
+    Needed because failure *names* are not unique across binaries: `tests::roundtrip` failing in
+    two crates is two failures but one name. Reconciling a global de-duplicated name list
+    against summed summary counts therefore invents a mismatch and reports a false SUITE_ERROR.
+    Counting per block keeps the two sides comparable.
+    """
+    blocks: list[TestBlock] = []
+    for stream in (run.stdout, run.stderr):
+        current: TestBlock | None = None
+        for line in stream.splitlines():
+            running = _RUNNING_RE.match(line)
+            if running:
+                current = TestBlock(declared=int(running.group(1)))
+                blocks.append(current)
+                continue
+            failed = _FAILED_LINE_RE.match(line)
+            if failed:
+                if current is None:                     # a FAILED line with no header
+                    current = TestBlock()
+                    blocks.append(current)
+                current.failures.append(failed.group(1).strip())
+                continue
+            summary = _SUMMARY_LINE_RE.match(line)
+            if summary:
+                if current is None:
+                    current = TestBlock()
+                    blocks.append(current)
+                current.summary = (summary.group(1), int(summary.group(2)),
+                                   int(summary.group(3)), int(summary.group(4)))
+                current = None
+    return blocks
+
+
 def _count(pattern: re.Pattern, run: TestRun) -> int:
     return len(pattern.findall(run.stdout)) + len(pattern.findall(run.stderr))
 
@@ -156,9 +208,12 @@ def unaccounted_reasons(run: TestRun) -> list[str]:
 
     reasons: list[str] = []
     summaries = parse_summaries(run)
-    failing = parse_failures(run)
+    blocks = parse_blocks(run)
     failed_summaries = [s for s in summaries if s[0] == "FAILED"]
     reported_failed = sum(s[2] for s in summaries)
+    # Per-block failure lines, NOT the de-duplicated global name list: the same test name
+    # failing in two binaries is two failures and one name.
+    printed_failures = sum(len(b.failures) for b in blocks)
     cargo_failed_targets = _count(_CARGO_TEST_FAILED_RE, run)
     aborts = _count(_ABORT_RE, run)
 
@@ -166,24 +221,34 @@ def unaccounted_reasons(run: TestRun) -> list[str]:
         reasons.append("nonzero exit with no test result summary at all")
     if aborts:
         reasons.append(f"{aborts} test process(es) aborted without reporting")
-    if reported_failed != len(failing):
+    if reported_failed != printed_failures:
         reasons.append(
-            f"summaries report {reported_failed} failed but only "
-            f"{len(failing)} test name(s) were printed"
+            f"summaries report {reported_failed} failed but "
+            f"{printed_failures} test failure line(s) were printed"
         )
     if cargo_failed_targets > len(failed_summaries):
         reasons.append(
             f"cargo reported {cargo_failed_targets} failing test target(s) but only "
             f"{len(failed_summaries)} produced a FAILED summary"
         )
-    if summaries and not failing and not reasons:
+    if summaries and not printed_failures and not reasons:
         reasons.append("nonzero exit but no test was reported as failing")
     return reasons
 
 
 def is_compile_error(run: TestRun) -> bool:
-    # cargo prints "could not compile `<crate>`" for every build failure, and nothing else.
-    return "could not compile" in run.stderr or "could not compile" in run.stdout
+    """A build failure, not a test failure.
+
+    Two guards. The exit code must be nonzero -- a *successful* run whose output merely
+    mentions the phrase (a test asserting on a cargo message, a doc example, a panic string)
+    is not a compile error. And the evidence must be a real diagnostic: cargo's
+    "could not compile" line, or an `error[Exxxx]` rustc code for the failures cargo phrases
+    differently (link errors, `error: aborting due to N previous errors`).
+    """
+    if run.returncode == 0:
+        return False
+    text = run.stderr + "\n" + run.stdout
+    return "could not compile" in text or bool(_ERROR_CODE_RE.search(text))
 
 
 def error_codes(run: TestRun) -> list[str]:
@@ -206,19 +271,60 @@ def _failure_excerpt(run: TestRun) -> str:
 
 
 def _rerun_by_name(project_dir: Path, project: str, name: str, timeout: int) -> bool:
-    """Re-run one test by exact name. True if it passed."""
+    """Re-run one test by exact name. True only if it genuinely ran and genuinely passed.
+
+    "The failure name is absent" is not evidence of recovery: a rerun that fails to compile, or
+    that matches no test at all, also prints no `... FAILED` line for that name and would count
+    as a flake recovery for code that never executed. The rerun must exit 0, execute at least
+    one test, and report no failures.
+    """
     cmd = TEST_COMMANDS[project]
     if cmd[0] != "cargo":
         # iceberg goes through make; fall back to a direct cargo invocation of the same shape.
         cmd = ["cargo", "test", "--no-fail-fast", "--lib", "--all-features", "--workspace"]
     run = run_tests(project_dir, [*cmd, name, "--", "--exact"], timeout=timeout)
-    if run.timed_out:
+    if run.timed_out or run.returncode != 0:
+        return False
+    summaries = parse_summaries(run)
+    executed = sum(passed + failed for _, passed, failed, _ in summaries)
+    if executed < 1:
+        return False
+    if any(failed for _, _, failed, _ in summaries):
         return False
     return name not in parse_failures(run)
 
 
-def score(project: str, project_dir: Path, run: TestRun, timeout: int = DEFAULT_TEST_TIMEOUT) -> Verdict:
-    """Turn one test run into a verdict, applying baseline subtraction and flaky retries."""
+_AUTO = object()
+
+
+def missing_target_reasons(project: str, run: TestRun, override=_AUTO) -> list[str]:
+    """Did every test target this project has actually report a summary?
+
+    Exit codes are not evidence that the tests ran. A generated function is free to call
+    `std::process::exit(0)`; its test binary dies before libtest prints the binary's summary,
+    cargo sees success for that target, and the other targets' green summaries are all that is
+    left to score -- a PASS for code that ran no tests. The count of `test result:` lines is
+    fixed for a project, so a target that has gone missing is visible directly.
+
+    Skipped when the project has no recorded snapshot (see `--snapshot-targets`).
+    """
+    want = expected.expected(project) if override is _AUTO else override
+    if not want:
+        return []
+    got = len(parse_summaries(run))
+    if got < want:
+        return [f"only {got} test-target summaries, expected {want} for {project} "
+                f"(a test binary exited before reporting)"]
+    return []
+
+
+def score(project: str, project_dir: Path, run: TestRun, timeout: int = DEFAULT_TEST_TIMEOUT,
+          expected_summaries=_AUTO) -> Verdict:
+    """Turn one test run into a verdict, applying baseline subtraction and flaky retries.
+
+    `expected_summaries` defaults to the project's recorded test-target count; pass an explicit
+    `None` to disable the check (offline unit tests run on a handful of synthetic summaries).
+    """
     codes = error_codes(run)
 
     if run.timed_out:
@@ -244,7 +350,7 @@ def score(project: str, project_dir: Path, run: TestRun, timeout: int = DEFAULT_
                 recovered.append(name)
                 break
 
-    unaccounted = unaccounted_reasons(run)
+    reasons = unaccounted_reasons(run) + missing_target_reasons(project, run, expected_summaries)
 
     if outside:
         # Genuine named failures: report TEST_FAIL (which drives the repair round) but keep any
@@ -252,13 +358,14 @@ def score(project: str, project_dir: Path, run: TestRun, timeout: int = DEFAULT_
         return Verdict(TEST_FAIL, failing_tests=outside, error_class_hint=codes,
                        error_text=_failure_excerpt(run), summaries=summaries,
                        baselined=baselined, flaky_recovered=recovered,
-                       reason="; ".join(unaccounted))
+                       reason="; ".join(reasons))
 
-    if unaccounted:
-        # Nonzero exit that the parsed output does not explain. Never PASS on this.
+    if reasons:
+        # An exit code the parsed output does not explain, or a test target that never
+        # reported. Never PASS on either.
         return Verdict(SUITE_ERROR, error_class_hint=codes, summaries=summaries,
                        baselined=baselined, flaky_recovered=recovered,
-                       reason="; ".join(unaccounted),
+                       reason="; ".join(reasons),
                        error_text=_failure_excerpt(run) + "\n" + run.stderr[-4000:])
 
     return Verdict(PASS, error_class_hint=codes, summaries=summaries,
