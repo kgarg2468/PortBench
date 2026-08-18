@@ -65,7 +65,8 @@
         "gpt_review",
         "calibration",
         "smoke2"
-      ]
+      ],
+      "notes": "Checkpoint 14:15 PDT: fable DONE (86 one-shot PASS, +12 repair = 98). opus DONE-with-holes (80 one-shot, +12 repair; 12 attempt-0 TRANSPORT_ERROR need backfill). sonnet DONE (68 one-shot, +20 repair = 88). haiku RUNNING at ~65/108 (so far 35 one-shot PASS, +14 repair; 26 attempt-0 compile errors)."
     },
     {
       "id": "run_gpt",
@@ -77,7 +78,8 @@
         "gpt_review",
         "calibration",
         "smoke2"
-      ]
+      ],
+      "notes": "Checkpoint 14:15 PDT: sol DONE (62 one-shot, +28 repair = 90). terra DONE (57 one-shot, +23 repair = 80). luna DONE (48 one-shot, +18 repair = 66). gpt-5.5 RUNNING at ~84/108 (libp2p tail)."
     },
     {
       "id": "taxonomy",
