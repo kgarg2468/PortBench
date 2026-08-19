@@ -1,0 +1,114 @@
+{
+  "cli_versions": {
+    "cargo": "cargo 1.95.0 (f2d3ce0bd 2026-03-21)",
+    "claude": "2.1.235 (Claude Code)",
+    "codex": "codex-cli 0.148.0",
+    "make": "GNU Make 3.81",
+    "rustc": "rustc 1.95.0 (59807616e 2026-04-14)"
+  },
+  "dataset_commit": "7026a8a9c8d4a524cbb554ff9b8100df4020114c",
+  "dataset_path": "/Users/krishgarg/Documents/Projects/ports/portbench/dataset2",
+  "ended_at": "2026-08-19T08:06:23.284155+00:00",
+  "excluded_leak_task_ids": [],
+  "final_verdict_tally": {
+    "PASS": 14,
+    "TEST_FAIL": 2,
+    "TIMEOUT": 2
+  },
+  "leak_stripped_task_ids": [],
+  "model": "gpt-5.6-sol",
+  "model_argv": [
+    "codex",
+    "exec",
+    "--skip-git-repo-check",
+    "-s",
+    "read-only",
+    "-m",
+    "gpt-5.6-sol",
+    "--json",
+    "-o",
+    "<last-message-file>",
+    "--ephemeral",
+    "--ignore-user-config",
+    "--ignore-rules",
+    "-c",
+    "tools.web_search=false",
+    "--disable",
+    "shell_tool",
+    "--disable",
+    "unified_exec",
+    "--disable",
+    "view_image",
+    "--disable",
+    "browser_use",
+    "--disable",
+    "browser_use_external",
+    "--disable",
+    "computer_use",
+    "--disable",
+    "multi_agent",
+    "--disable",
+    "plugins",
+    "--disable",
+    "skill_search",
+    "--disable",
+    "apps",
+    "--disable",
+    "image_generation"
+  ],
+  "n_tasks": 18,
+  "run_id": "full-gpt-5.6-sol-02",
+  "settings": {
+    "expected_summaries": {
+      "charset-normalizer": 4,
+      "iceberg": 12,
+      "libp2p": 158
+    },
+    "keep_artifacts": false,
+    "model_calls_isolated": true,
+    "model_timeout_s": 600,
+    "reasoning": "cli default (out of the box)",
+    "repair_round": true,
+    "resume": false,
+    "test_commands": {
+      "charset-normalizer": [
+        "cargo",
+        "test",
+        "--workspace",
+        "--no-fail-fast"
+      ],
+      "iceberg": [
+        "make",
+        "unit-test"
+      ],
+      "libp2p": [
+        "cargo",
+        "test",
+        "--workspace",
+        "--no-fail-fast"
+      ]
+    },
+    "test_timeout_s": 1800
+  },
+  "started_at": "2026-08-19T06:04:42.767412+00:00",
+  "task_ids": [
+    "projects__libp2p__rust__identity__src__ecdsa__.rs__function__15",
+    "projects__libp2p__rust__identity__src__ecdsa__.rs__function__2",
+    "projects__libp2p__rust__identity__src__ecdsa__.rs__function__3",
+    "projects__libp2p__rust__identity__src__ed25519__.rs__function__15",
+    "projects__libp2p__rust__identity__src__ed25519__.rs__function__4",
+    "projects__libp2p__rust__identity__src__ed25519__.rs__function__5",
+    "projects__libp2p__rust__identity__src__keypair__.rs__function__34",
+    "projects__libp2p__rust__identity__src__rsa__.rs__function__4",
+    "projects__libp2p__rust__identity__src__rsa__.rs__function__5",
+    "projects__libp2p__rust__muxers__mplex__src__codec__.rs__function__6",
+    "projects__libp2p__rust__protocols__gossipsub__src__config__.rs__function__18",
+    "projects__libp2p__rust__protocols__gossipsub__src__mcache__.rs__function__12",
+    "projects__libp2p__rust__protocols__gossipsub__src__mcache__.rs__function__3",
+    "projects__libp2p__rust__protocols__gossipsub__src__mcache__.rs__function__9",
+    "projects__libp2p__rust__protocols__kad__src__record__store__memory__.rs__function__5",
+    "projects__libp2p__rust__swarm__src__behaviour__peer_addresses__.rs__function__4",
+    "projects__libp2p__rust__swarm__src__lib__.rs__function__14",
+    "projects__libp2p__rust__swarm__src__lib__.rs__function__8"
+  ]
+}

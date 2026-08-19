@@ -8,18 +8,19 @@
   },
   "dataset_commit": "7026a8a9c8d4a524cbb554ff9b8100df4020114c",
   "dataset_path": "/Users/krishgarg/Documents/Projects/ports/portbench/dataset",
-  "ended_at": "2026-08-19T03:29:58.136501+00:00",
+  "ended_at": "2026-08-19T04:08:46.080920+00:00",
   "excluded_leak_task_ids": [],
   "final_verdict_tally": {
-    "PASS": 13
+    "PASS": 9,
+    "TEST_FAIL": 2
   },
   "leak_stripped_task_ids": [],
-  "model": "fable",
+  "model": "opus",
   "model_argv": [
     "claude",
     "-p",
     "--model",
-    "fable",
+    "opus",
     "--output-format",
     "json",
     "--safe-mode",
@@ -31,8 +32,8 @@
     "--tools",
     ""
   ],
-  "n_tasks": 13,
-  "run_id": "full-fable-02",
+  "n_tasks": 11,
+  "run_id": "full-opus-02",
   "settings": {
     "expected_summaries": {
       "charset-normalizer": 4,
@@ -65,20 +66,18 @@
     },
     "test_timeout_s": 1800
   },
-  "started_at": "2026-08-19T02:45:49.559650+00:00",
+  "started_at": "2026-08-19T03:29:59.428129+00:00",
   "task_ids": [
-    "projects__libp2p__rust__identity__src__ecdsa__.rs__function__2",
     "projects__libp2p__rust__identity__src__ecdsa__.rs__function__3",
-    "projects__libp2p__rust__identity__src__ecdsa__.rs__function__9",
     "projects__libp2p__rust__identity__src__ed25519__.rs__function__15",
     "projects__libp2p__rust__identity__src__ed25519__.rs__function__4",
     "projects__libp2p__rust__identity__src__ed25519__.rs__function__5",
-    "projects__libp2p__rust__identity__src__peer_id__.rs__function__8",
-    "projects__libp2p__rust__identity__src__rsa__.rs__function__6",
-    "projects__libp2p__rust__muxers__mplex__src__codec__.rs__function__6",
-    "projects__libp2p__rust__protocols__gossipsub__src__mcache__.rs__function__9",
-    "projects__libp2p__rust__protocols__kad__src__query__peers__closest__.rs__function__11",
+    "projects__libp2p__rust__protocols__dcutr__src__behaviour__.rs__function__12",
+    "projects__libp2p__rust__protocols__gossipsub__src__config__.rs__function__18",
+    "projects__libp2p__rust__protocols__gossipsub__src__mcache__.rs__function__3",
+    "projects__libp2p__rust__protocols__kad__src__record__store__memory__.rs__function__7",
     "projects__libp2p__rust__swarm__src__behaviour__peer_addresses__.rs__function__4",
-    "projects__libp2p__rust__swarm__src__dial_opts__.rs__function__6"
+    "projects__libp2p__rust__swarm__src__lib__.rs__function__14",
+    "projects__libp2p__rust__transports__tls__src__certificate__.rs__function__9"
   ]
 }
