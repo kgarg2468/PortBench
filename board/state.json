@@ -107,7 +107,7 @@
       "id": "writeup",
       "label": "Write-up / launch draft",
       "status": "blocked",
-      "note": "\"The borrow checker is AI's final boss.\" User reviews before anything is published.",
+      "note": "DRAFT COMPLETE (writeup/DRAFT.md, committed 04:5x): 'AI quietly beat the borrow checker' \u2014 2/1,346 borrow-family errors; fable+opus 100/100 with one repair; failure mass is API hallucination (E0599/E0308/E0609); honest-caveats section incl. contamination + license. BLOCKED ON: user review. Nothing publishes, repo stays private until approved.",
       "deps": [
         "taxonomy",
         "site"
