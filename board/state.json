@@ -82,8 +82,8 @@
     {
       "id": "taxonomy",
       "label": "Failure taxonomy\n(borrow checker vs deps vs logic)",
-      "status": "blocked",
-      "note": "Headline chart + repair-fix rate + cost-per-solved-task",
+      "status": "done",
+      "note": "FINAL over 1,346 attempts: borrow/lifetime/move family = 2 hits total (0.15%), both on one luna repair attempt (E0382+E0716). Failure mass is API knowledge: E0599 no-method 119, E0308 type-mismatch 69, E0609 no-field 47, E0277 traits 22, E0433/E0425 imports 40. Paper's borrow-checker-dominant claim is dead.",
       "deps": [
         "run_claude",
         "run_gpt",
@@ -94,8 +94,8 @@
     {
       "id": "site",
       "label": "Leaderboard site",
-      "status": "blocked",
-      "note": "Static, reads results JSON client-side (living page). Leaderboard + trend + failure gallery. Credits RustRepoTrans.",
+      "status": "running",
+      "note": "site/data/real wired + committed: fable 92/100 one-shot (100 after repair), opus 91/100 (100), gpt-5.5 72/91, sonnet 77/90, sol 72/90, terra 68/87, luna 62/85 ($0.003/solved cheapest), haiku 59/78. Pooled repair recovery 62%. Browser-verified, no console errors. Gallery snippets pending capture lane.",
       "deps": [
         "taxonomy",
         "site_scaffold",
@@ -211,7 +211,7 @@
       "id": "gallery_capture",
       "label": "Gallery capture\n(--keep-artifacts + subset rerun)",
       "status": "running",
-      "note": "PR #5 merged remotely (resume-artifact fix, 102/102 tests). Main checkout pull deferred until lanes finish; then subset rerun with --keep-artifacts.",
+      "note": "Capture lane started 04:32: 17 published gallery entries re-generated with --keep-artifacts into gallery-runs/ (gitignored). Curation step attaches code+rustc snippets only where the fresh attempt reproduces the same failure class; entries without a reproduction keep model_code_available:false.",
       "deps": [
         "aggregator"
       ]
@@ -219,8 +219,8 @@
     {
       "id": "flake_rerun",
       "label": "Env-flake clean reruns",
-      "status": "running",
-      "note": "Claude models done (fable 12/13 one-shot clean, opus, sonnet, haiku); sol mid-run, terra/luna/gpt-5.5 queued. KEY FINDING: idle_timeout_with_keep_alive_no still failed 3-retry sole on the IDLE machine 15x -> it's inherently broken on this host (spike saw 2/3 fail on untouched tree). Promoted to libp2p baseline allowlist (commit 36477fc); remaining models' reruns start clean. ping_pong/connect/bootstrap: zero sticky failures when idle \u2014 pure load flakes, stay in FLAKY_TESTS. Aggregator getting retroactive rebaseline + whole-task override (worker on agg-rebaseline branch) to flip the 15 pre-promotion sticky records and stop stale attempt-1 merge pollution.",
+      "status": "done",
+      "note": "COMPLETE 04:31 PDT: 102 reruns across 8 models. ping_pong/connect/bootstrap: zero sticky failures when idle (pure load flakes). idle_timeout stayed broken -> baseline allowlist. Rerun TIMEOUTs (sol 2, gpt-5.5 2, terra 1) timed out again idle = genuine, kept as failures.",
       "deps": [
         "run_claude",
         "run_gpt",
