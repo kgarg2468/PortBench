@@ -71,7 +71,7 @@
       "id": "run_gpt",
       "label": "Full run: GPT family",
       "status": "running",
-      "note": "Checkpoint 14:15 PDT: sol DONE (62 one-shot, +28 repair = 90). terra DONE (57 one-shot, +23 repair = 80). luna DONE (48 one-shot, +18 repair = 66). gpt-5.5 RUNNING at ~84/108 (libp2p tail).",
+      "note": "Correction: earlier progress attributed to gpt-5.5 was luna. luna FINAL (16:21): 58 one-shot +21 repair = 79/108. sol: 62+28=90. terra: 57+23=80. gpt-5.5 started 16:21, ETA ~19:20 \u2014 libp2p stretch runs single-lane (less flake exposure).",
       "deps": [
         "smoke",
         "gpt_review",
@@ -201,8 +201,8 @@
     {
       "id": "backfill_transport",
       "label": "Transport backfill\n(rerun API-overload tasks)",
-      "status": "running",
-      "note": "Started 16:14 PDT: full-opus-01b over 13 tasks \u2014 the 12 attempt-0 TRANSPORT_ERRORs plus ed25519 fn4 whose repair call transport-errored. Aggregator later-run-override merges it over full-opus-01.",
+      "status": "done",
+      "note": "DONE 16:5x PDT: full-opus-01b, 13 tasks \u2014 8 one-shot PASS +4 repair = 12/13 recovered; 1 TEST_FAIL after repair. Ran under lane-B load with pre-fix FLAKY_TESTS, so its TEST_FAILs join the env-flake rerun set.",
       "deps": [
         "run_claude"
       ]
