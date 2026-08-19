@@ -1,0 +1,71 @@
+{
+  "cli_versions": {
+    "cargo": "cargo 1.95.0 (f2d3ce0bd 2026-03-21)",
+    "claude": "2.1.220 (Claude Code)",
+    "codex": "codex-cli 0.147.0",
+    "make": "GNU Make 3.81",
+    "rustc": "rustc 1.95.0 (59807616e 2026-04-14)"
+  },
+  "dataset_commit": "7026a8a9c8d4a524cbb554ff9b8100df4020114c",
+  "dataset_path": "/Users/krishgarg/Documents/Projects/ports/portbench/dataset",
+  "ended_at": "2026-08-18T08:39:10.090984+00:00",
+  "excluded_leak_task_ids": [],
+  "final_verdict_tally": {
+    "PASS": 1
+  },
+  "leak_stripped_task_ids": [],
+  "model": "haiku",
+  "model_argv": [
+    "claude",
+    "-p",
+    "--model",
+    "haiku",
+    "--output-format",
+    "json",
+    "--safe-mode",
+    "--no-session-persistence",
+    "--disable-slash-commands",
+    "--strict-mcp-config",
+    "--mcp-config",
+    "{\"mcpServers\":{}}",
+    "--tools",
+    ""
+  ],
+  "n_tasks": 1,
+  "run_id": "fixcheck-haiku",
+  "settings": {
+    "expected_summaries": {
+      "charset-normalizer": 4,
+      "iceberg": 12,
+      "libp2p": 158
+    },
+    "model_calls_isolated": true,
+    "model_timeout_s": 600,
+    "reasoning": "cli default (out of the box)",
+    "repair_round": false,
+    "resume": false,
+    "test_commands": {
+      "charset-normalizer": [
+        "cargo",
+        "test",
+        "--workspace",
+        "--no-fail-fast"
+      ],
+      "iceberg": [
+        "make",
+        "unit-test"
+      ],
+      "libp2p": [
+        "cargo",
+        "test",
+        "--workspace",
+        "--no-fail-fast"
+      ]
+    },
+    "test_timeout_s": 1800
+  },
+  "started_at": "2026-08-18T08:38:11.553107+00:00",
+  "task_ids": [
+    "projects__charset-normalizer__rust__src__cd__.rs__function__1"
+  ]
+}

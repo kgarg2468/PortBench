@@ -1,0 +1,19 @@
+{
+  "dataset_commit": "7026a8a9c8d4a524cbb554ff9b8100df4020114c",
+  "dataset_path": "/Users/krishgarg/Documents/Projects/ports/portbench/dataset",
+  "model": "reference",
+  "run_id": "fixcheck-selftest",
+  "settings": {
+    "mode": "self-test",
+    "test_timeout_s": 1800
+  },
+  "started_at": "2026-08-18T08:30:59.355080+00:00",
+  "task_ids": [
+    "projects__charset-normalizer__rust__src__entity__.rs__function__18",
+    "projects__charset-normalizer__rust__src__entity__.rs__function__10",
+    "projects__iceberg__rust__crates__iceberg__src__transform__truncate__.rs__function__1",
+    "projects__iceberg__rust__crates__iceberg__src__spec__schema__.rs__function__18",
+    "projects__libp2p__rust__identity__src__ecdsa__.rs__function__3",
+    "projects__libp2p__rust__identity__src__ed25519__.rs__function__16"
+  ]
+}

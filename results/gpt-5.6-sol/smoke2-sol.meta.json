@@ -1,0 +1,96 @@
+{
+  "cli_versions": {
+    "cargo": "cargo 1.95.0 (f2d3ce0bd 2026-03-21)",
+    "claude": "2.1.220 (Claude Code)",
+    "codex": "codex-cli 0.147.0",
+    "make": "GNU Make 3.81",
+    "rustc": "rustc 1.95.0 (59807616e 2026-04-14)"
+  },
+  "dataset_commit": "7026a8a9c8d4a524cbb554ff9b8100df4020114c",
+  "dataset_path": "/Users/krishgarg/Documents/Projects/ports/portbench/dataset",
+  "ended_at": "2026-08-18T09:01:39.952821+00:00",
+  "excluded_leak_task_ids": [],
+  "final_verdict_tally": {
+    "PASS": 1,
+    "TEST_FAIL": 1
+  },
+  "leak_stripped_task_ids": [],
+  "model": "gpt-5.6-sol",
+  "model_argv": [
+    "codex",
+    "exec",
+    "--skip-git-repo-check",
+    "-s",
+    "read-only",
+    "-m",
+    "gpt-5.6-sol",
+    "--json",
+    "-o",
+    "<last-message-file>",
+    "--ephemeral",
+    "--ignore-user-config",
+    "--ignore-rules",
+    "-c",
+    "tools.web_search=false",
+    "--disable",
+    "shell_tool",
+    "--disable",
+    "unified_exec",
+    "--disable",
+    "view_image",
+    "--disable",
+    "browser_use",
+    "--disable",
+    "browser_use_external",
+    "--disable",
+    "computer_use",
+    "--disable",
+    "multi_agent",
+    "--disable",
+    "plugins",
+    "--disable",
+    "skill_search",
+    "--disable",
+    "apps",
+    "--disable",
+    "image_generation"
+  ],
+  "n_tasks": 2,
+  "run_id": "smoke2-sol",
+  "settings": {
+    "expected_summaries": {
+      "charset-normalizer": 4,
+      "iceberg": 12,
+      "libp2p": 158
+    },
+    "model_calls_isolated": true,
+    "model_timeout_s": 600,
+    "reasoning": "cli default (out of the box)",
+    "repair_round": true,
+    "resume": false,
+    "test_commands": {
+      "charset-normalizer": [
+        "cargo",
+        "test",
+        "--workspace",
+        "--no-fail-fast"
+      ],
+      "iceberg": [
+        "make",
+        "unit-test"
+      ],
+      "libp2p": [
+        "cargo",
+        "test",
+        "--workspace",
+        "--no-fail-fast"
+      ]
+    },
+    "test_timeout_s": 1800
+  },
+  "started_at": "2026-08-18T09:00:34.424860+00:00",
+  "task_ids": [
+    "projects__charset-normalizer__rust__src__cd__.rs__function__1",
+    "projects__charset-normalizer__rust__src__cd__.rs__function__10"
+  ]
+}
