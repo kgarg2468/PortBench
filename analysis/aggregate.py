@@ -41,10 +41,19 @@ Design notes that are easy to get wrong and expensive to get wrong quietly:
   note on `buckets.NO_DATA_VERDICTS` for the one ambiguity the verdict string still carries.
 
   Backfill.  If several run files for one model match `--runs`, they are applied oldest to
-  newest and a later run overrides an earlier one for the same (task_id, attempt). "Later" is
-  `(meta.started_at, run_id, filename)` — meta first because run ids are not ordered, filename
-  last only as a tie-break. This makes re-running the tasks that transport-errored a matter of
-  dropping a second JSONL next to the first, with no editing of the original.
+  newest and a later run takes over a task *whole*: the first record a run contributes for a
+  task clears whatever earlier runs had recorded for it. "Later" is `(meta.started_at, run_id,
+  filename)` — meta first because run ids are not ordered, filename last only as a tie-break.
+  This makes re-running the tasks that transport-errored a matter of dropping a second JSONL
+  next to the first, with no editing of the original. Overriding per (task_id, attempt) instead
+  would leave the old run's attempt 1 attached to the new run's attempt 0, so a task the rerun
+  passed one-shot would still carry a repair round that never happened.
+
+  Rebaselining.  `harness/baseline.py` grows over time: a test that turns out to fail on the
+  untouched tree is promoted to the project's allowlist. Records written before that promotion
+  still say TEST_FAIL on a failure no model could have caused, so `rebaseline_record` subtracts
+  the allowlist again at aggregation time. A record whose failures were *all* baselined becomes
+  a PASS and its repair round is dropped, because that round only ran to chase a phantom.
 """
 
 from __future__ import annotations
@@ -61,6 +70,8 @@ try:                                  # `python -m analysis.aggregate` from the 
 except ImportError:                   # direct execution / odd sys.path
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
     from analysis import buckets
+
+from harness import baseline as harness_baseline   # noqa: E402  (repo root on sys.path above)
 
 
 DATASET = {
@@ -133,12 +144,63 @@ def load_run_files(results_dir: Path, models_filter, runs_glob: str) -> list[dic
     return runs
 
 
+def rebaseline_record(record: dict) -> dict:
+    """Subtract the *current* baseline allowlist from an already-recorded TEST_FAIL.
+
+    Pure: returns the record unchanged (the same object) when nothing is subtracted, otherwise
+    a modified copy. Three outcomes once something is subtracted:
+
+      * genuine failures remain  -> still TEST_FAIL, `failing_tests` reduced to those.
+      * nothing remains          -> PASS, flagged `rebaselined` so the flip is visible in any
+                                    downstream dump rather than looking like a fresh green run.
+      * nothing remains, but the record carries a `verdict_reason` -> left alone. The reason
+        means the harness had its own account of the failure, and an accounting anomaly must
+        never be promoted to a PASS by a bookkeeping rule.
+
+    The subtracted names are kept on `baselined_failures` (sorted, deduped) so the record still
+    says which tests it saw fail.
+    """
+    if record.get("verdict") != buckets.TEST_FAIL:
+        return record
+    allowed = harness_baseline.allowlist(str(record.get("project") or ""))
+    failing = list(record.get("failing_tests") or [])
+    subtracted = sorted({t for t in failing if t in allowed})
+    if not subtracted:
+        return record
+    outside = [t for t in failing if t not in allowed]
+
+    baselined = sorted(set(record.get("baselined_failures") or []) | set(subtracted))
+    if outside:
+        updated = dict(record)
+        updated["failing_tests"] = outside
+        updated["baselined_failures"] = baselined
+        return updated
+    if str(record.get("verdict_reason") or "").strip():
+        return record
+    updated = dict(record)
+    updated["verdict"] = buckets.PASS
+    updated["failing_tests"] = []
+    updated["baselined_failures"] = baselined
+    updated["rebaselined"] = True
+    return updated
+
+
 def index_attempts(runs: list[dict]) -> dict[str, dict[str, dict[int, dict]]]:
-    """{model: {task_id: {attempt: record}}}, later runs overriding earlier ones.
+    """{model: {task_id: {attempt: record}}}, later runs taking over whole tasks.
 
     `runs` must already be in oldest-first order per model; `load_run_files` guarantees it.
+
+    Ownership is per task, not per (task_id, attempt): the first record a run contributes for a
+    task drops everything earlier runs recorded for it, and later records from that same run
+    then accumulate per attempt. Overriding per attempt instead leaves a stale attempt 1 hanging
+    off a rerun's attempt 0 — a repair round for a failure the rerun did not have.
+
+    Every record is passed through `rebaseline_record` on the way in. If that turns attempt 0
+    into a PASS, the attempt 1 beside it is dropped: the repair round only ever ran because of
+    the failure that just turned out to be baseline noise.
     """
     index: dict[str, dict[str, dict[int, dict]]] = {}
+    owner: dict[tuple[str, str], str] = {}
     for run in runs:
         per_model = index.setdefault(run["model"], {})
         for record in run["records"]:
@@ -146,7 +208,21 @@ def index_attempts(runs: list[dict]) -> dict[str, dict[str, dict[int, dict]]]:
             attempt = record.get("attempt")
             if not task_id or not isinstance(attempt, int):
                 continue
-            per_model.setdefault(task_id, {})[attempt] = record
+            key = (run["model"], task_id)
+            if owner.get(key) != run["run_id"] or task_id not in per_model:
+                owner[key] = run["run_id"]
+                per_model[task_id] = {}
+            per_model[task_id][attempt] = rebaseline_record(record)
+
+    for tasks in index.values():
+        for attempts in tasks.values():
+            first, repair = attempts.get(0), attempts.get(1)
+            if first is None or repair is None:
+                continue
+            if first.get("verdict") != buckets.PASS:
+                continue
+            if str(first.get("run_id") or "") == str(repair.get("run_id") or ""):
+                del attempts[1]
     return index
 
 

@@ -36,6 +36,25 @@ def stats_by_model(built):
     return {s.model: s for s in built["_stats"]}
 
 
+def _record(run_id, model, task_id, attempt, verdict, project="demo",
+            failing_tests=(), **extra):
+    """One harness JSONL record, for the tests that drive index_attempts directly."""
+    record = {
+        "run_id": run_id, "model": model, "task_id": task_id, "project": project,
+        "attempt": attempt, "verdict": verdict, "error_class_hint": [],
+        "failing_tests": list(failing_tests),
+        "tokens_in": 1000, "tokens_out": 500, "duration_s": 10.0,
+    }
+    record.update(extra)
+    return record
+
+
+def _run(run_id, model, records):
+    """The shape load_run_files hands to index_attempts, without touching the disk."""
+    return {"model": model, "path": Path(f"{run_id}.jsonl"), "records": records,
+            "meta": {}, "run_id": run_id, "started_at": "", "ended_at": ""}
+
+
 class TestBucketMapping(unittest.TestCase):
 
     def test_known_codes_land_in_their_bucket(self):
@@ -258,6 +277,102 @@ class TestBackfill(unittest.TestCase):
     def test_run_ids_are_recorded_on_the_model(self):
         records = {m["model"]: m for m in build()["leaderboard"]["models"]}
         self.assertEqual(records["fable"]["run_ids"], ["full-alpha-01", "full-alpha-02"])
+
+    def test_a_later_run_takes_over_the_whole_task_not_one_attempt(self):
+        # Run 01 failed the task and repaired it; run 02 re-ran it and passed one-shot, so it
+        # emitted no attempt 1. Merging per (task, attempt) would leave run 01's repair record
+        # attached to run 02's pass — a repair round for a failure that no longer exists, which
+        # inflates repairs_attempted and, on a failed repair, the +repair count.
+        index = aggregate.index_attempts([
+            _run("full-old-01", "fable", [
+                _record("full-old-01", "fable", "T_RERUN", 0, "TEST_FAIL",
+                        failing_tests=["demo::t_a"]),
+                _record("full-old-01", "fable", "T_RERUN", 1, "COMPILE_ERROR"),
+            ]),
+            _run("full-new-02", "fable", [
+                _record("full-new-02", "fable", "T_RERUN", 0, "PASS"),
+            ]),
+        ])
+        attempts = index["fable"]["T_RERUN"]
+        self.assertEqual(sorted(attempts), [0])
+        self.assertEqual(attempts[0]["verdict"], "PASS")
+        self.assertEqual(attempts[0]["run_id"], "full-new-02")
+
+    def test_records_inside_one_run_still_accumulate_per_attempt(self):
+        # Whole-task ownership must not make a run clobber its own attempt 0 with its attempt 1.
+        index = aggregate.index_attempts([
+            _run("full-solo-01", "fable", [
+                _record("full-solo-01", "fable", "T_PAIR", 0, "COMPILE_ERROR"),
+                _record("full-solo-01", "fable", "T_PAIR", 1, "PASS"),
+            ]),
+        ])
+        self.assertEqual(sorted(index["fable"]["T_PAIR"]), [0, 1])
+
+
+# A libp2p test that was promoted into the baseline allowlist after the sweep was recorded,
+# and one that never will be. The point of rebaselining is that the first is subtracted from
+# JSONL written before the promotion, without re-running anything.
+BASELINED = "connection::tests::idle_timeout_with_keep_alive_no"
+GENUINE = "protocol::tests::round_trips_a_frame"
+
+
+class TestRebaseline(unittest.TestCase):
+
+    def test_the_promoted_test_is_actually_in_the_allowlist(self):
+        # If harness/baseline.py drops it again, every expectation below is meaningless, so
+        # fail here rather than silently passing on a no-op subtraction.
+        self.assertIn(BASELINED, aggregate.harness_baseline.allowlist("libp2p"))
+        self.assertNotIn(GENUINE, aggregate.harness_baseline.allowlist("libp2p"))
+
+    def test_a_wholly_baselined_test_fail_becomes_a_pass_and_loses_its_repair(self):
+        index = aggregate.index_attempts([
+            _run("full-libp2p-01", "opus", [
+                _record("full-libp2p-01", "opus", "T_PHANTOM", 0, "TEST_FAIL",
+                        project="libp2p", failing_tests=[BASELINED]),
+                _record("full-libp2p-01", "opus", "T_PHANTOM", 1, "TEST_FAIL",
+                        project="libp2p", failing_tests=[BASELINED]),
+            ]),
+        ])
+        attempts = index["opus"]["T_PHANTOM"]
+        # The repair round only ran because of the phantom failure, so it is not a repair.
+        self.assertEqual(sorted(attempts), [0])
+        self.assertEqual(attempts[0]["verdict"], "PASS")
+        self.assertTrue(attempts[0]["rebaselined"])
+        self.assertEqual(attempts[0]["failing_tests"], [])
+        self.assertEqual(attempts[0]["baselined_failures"], [BASELINED])
+
+    def test_a_mixed_test_fail_keeps_the_genuine_failures(self):
+        record = aggregate.rebaseline_record(
+            _record("r", "opus", "T_MIXED", 0, "TEST_FAIL", project="libp2p",
+                    failing_tests=[GENUINE, BASELINED]))
+        self.assertEqual(record["verdict"], "TEST_FAIL")
+        self.assertEqual(record["failing_tests"], [GENUINE])
+        self.assertEqual(record["baselined_failures"], [BASELINED])
+        self.assertNotIn("rebaselined", record)
+
+    def test_a_verdict_reason_blocks_the_promotion_to_pass(self):
+        # Sole failure is allowlisted, but the harness also recorded a reason of its own: an
+        # accounting anomaly, and an anomalous run is never upgraded to a PASS by this rule.
+        original = _record("r", "opus", "T_ANOMALY", 0, "TEST_FAIL", project="libp2p",
+                           failing_tests=[BASELINED],
+                           verdict_reason="tests reported 0 executed")
+        record = aggregate.rebaseline_record(original)
+        self.assertIs(record, original)
+        self.assertEqual(record["verdict"], "TEST_FAIL")
+        self.assertEqual(record["failing_tests"], [BASELINED])
+
+    def test_records_with_nothing_to_subtract_are_returned_untouched(self):
+        # Same object, not a copy: rebaselining is a no-op for every record it does not own,
+        # including non-TEST_FAIL verdicts and projects with an empty baseline.
+        for original in (
+            _record("r", "opus", "T_A", 0, "TEST_FAIL", project="libp2p",
+                    failing_tests=[GENUINE]),
+            _record("r", "opus", "T_B", 0, "COMPILE_ERROR", project="libp2p",
+                    failing_tests=[BASELINED]),
+            _record("r", "opus", "T_C", 0, "TEST_FAIL", project="iceberg",
+                    failing_tests=["iceberg::t_a"]),
+        ):
+            self.assertIs(aggregate.rebaseline_record(original), original)
 
 
 class TestRepairMath(unittest.TestCase):
