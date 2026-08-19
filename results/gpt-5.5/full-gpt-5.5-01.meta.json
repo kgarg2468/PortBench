@@ -8,7 +8,14 @@
   },
   "dataset_commit": "7026a8a9c8d4a524cbb554ff9b8100df4020114c",
   "dataset_path": "/Users/krishgarg/Documents/Projects/ports/portbench/dataset2",
+  "ended_at": "2026-08-19T02:45:33.625818+00:00",
   "excluded_leak_task_ids": [],
+  "final_verdict_tally": {
+    "COMPILE_ERROR": 8,
+    "PASS": 94,
+    "TEST_FAIL": 4,
+    "TIMEOUT": 2
+  },
   "leak_stripped_task_ids": [
     "projects__iceberg__rust__crates__catalog__glue__src__catalog__.rs__function__11",
     "projects__iceberg__rust__crates__iceberg__src__writer__base_writer__data_file_writer__.rs__function__4"

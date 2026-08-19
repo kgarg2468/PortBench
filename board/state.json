@@ -70,8 +70,8 @@
     {
       "id": "run_gpt",
       "label": "Full run: GPT family",
-      "status": "running",
-      "note": "Correction: earlier progress attributed to gpt-5.5 was luna. luna FINAL (16:21): 58 one-shot +21 repair = 79/108. sol: 62+28=90. terra: 57+23=80. gpt-5.5 started 16:21, ETA ~19:20 \u2014 libp2p stretch runs single-lane (less flake exposure).",
+      "status": "done",
+      "note": "COMPLETE 19:44 PDT. sol: 62 one-shot +28 repair. terra: 57+23. luna: 58+21. gpt-5.5: 72+22 = 94/108 raw \u2014 strongest GPT; its libp2p stretch ran single-lane so it dodged most env-flake contamination. Raw denominators; effective numbers come after flake reruns + aggregation.",
       "deps": [
         "smoke",
         "gpt_review",
@@ -219,8 +219,8 @@
     {
       "id": "flake_rerun",
       "label": "Env-flake clean reruns",
-      "status": "blocked",
-      "note": "DISCOVERY 16:30 PDT: under two-lane load, 4 timing-sensitive libp2p tests (ping_pong, idle_timeout_with_keep_alive_no, connect, kad bootstrap-interval) failed across 12-28 unrelated tasks for every model \u2014 123 attempt verdicts are sole-env-flake TEST_FAILs. Fix: all 4 added to FLAKY_TESTS; every affected task x model pair (89 so far; gpt-5.5 counted when its lane ends) re-runs start-to-finish on the idle machine as full-<model>-02; aggregator later-run override replaces contaminated verdicts. 4 attempt-1 TIMEOUTs left as-is, disclosed. Blocked on: opus backfill + lane B (needs idle machine).",
+      "status": "running",
+      "note": "Started 19:45 PDT on idle machine: 102 task-runs as full-<model>-02 (fable 13, sol 18, terra 17, luna 15, sonnet 15, opus 11 incl. contaminated backfill records, haiku 8, gpt-5.5 5 incl. 2 TIMEOUTs). FLAKY_TESTS retry now covers all 4 env-sensitive tests. Aggregator later-run-override replaces contaminated verdicts. ETA 4-6 h.",
       "deps": [
         "run_claude",
         "run_gpt",
