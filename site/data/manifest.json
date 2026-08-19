@@ -1,11 +1,11 @@
 {
   "schema": "portbench.manifest/1",
-  "comment": "Points the site at a dataset directory. To publish real results: drop the four files into site/data/real/ and change \"dataset\" to \"real\". No code changes required.",
-  "dataset": "sample",
+  "comment": "Points the site at a dataset directory. Written by analysis/aggregate.py; flip \"dataset\" back to \"sample\" to restore the placeholder set.",
+  "dataset": "real",
   "files": {
-    "leaderboard": "sample/leaderboard.json",
-    "taxonomy": "sample/taxonomy.json",
-    "trend": "sample/trend.json",
-    "gallery": "sample/gallery.json"
+    "leaderboard": "real/leaderboard.json",
+    "taxonomy": "real/taxonomy.json",
+    "trend": "real/trend.json",
+    "gallery": "real/gallery.json"
   }
 }

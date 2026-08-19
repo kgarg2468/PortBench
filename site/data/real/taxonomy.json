@@ -1,0 +1,457 @@
+{
+  "schema": "portbench.taxonomy/1",
+  "comment": "Every non-PASS attempt bucketed exactly once, so per model the buckets for an attempt sum to that attempt's failure count in leaderboard.json. Compile failures are keyed off the first rustc code in error_class_hint (the harness stores that list sorted, so 'first' is deterministic); test_fail and harness come straight off the verdict. harness_breakdown splits the harness bucket by verdict, so a TIMEOUT (the suite hung on the model's code) is distinguishable from an EXTRACTION_ERROR (no function in the reply). top_codes counts every code in an attempt-0 failure, not just the one that decided the bucket.",
+  "run_id": "sweep-2026-08-19",
+  "generated": "2026-08-19T11:31:03.575245+00:00",
+  "buckets": [
+    {
+      "id": "borrow",
+      "label": "Borrow checker & lifetimes",
+      "short": "Borrow / lifetimes",
+      "codes": [
+        "E0106",
+        "E0261",
+        "E0262",
+        "E0309",
+        "E0310",
+        "E0311",
+        "E0312",
+        "E0373",
+        "E0381",
+        "E0382",
+        "E0383",
+        "E0384",
+        "E0499",
+        "E0500",
+        "E0501",
+        "E0502",
+        "E0503",
+        "E0504",
+        "E0505",
+        "E0506",
+        "E0507",
+        "E0508",
+        "E0509",
+        "E0510",
+        "E0515",
+        "E0516",
+        "E0521",
+        "E0524",
+        "E0525",
+        "E0596",
+        "E0597",
+        "E0621",
+        "E0623",
+        "E0700",
+        "E0712",
+        "E0713",
+        "E0716",
+        "E0759"
+      ],
+      "blurb": "Ownership, moves, aliasing, dangling references. The part of Rust that has no Python analogue, so there is nothing in the source to translate."
+    },
+    {
+      "id": "types",
+      "label": "Types & traits",
+      "short": "Types / traits",
+      "codes": [
+        "E0004",
+        "E0023",
+        "E0026",
+        "E0027",
+        "E0033",
+        "E0038",
+        "E0053",
+        "E0055",
+        "E0057",
+        "E0060",
+        "E0061",
+        "E0062",
+        "E0063",
+        "E0069",
+        "E0070",
+        "E0071",
+        "E0107",
+        "E0109",
+        "E0119",
+        "E0121",
+        "E0191",
+        "E0195",
+        "E0207",
+        "E0210",
+        "E0220",
+        "E0223",
+        "E0271",
+        "E0275",
+        "E0276",
+        "E0277",
+        "E0281",
+        "E0282",
+        "E0283",
+        "E0284",
+        "E0308",
+        "E0369",
+        "E0370",
+        "E0393",
+        "E0407",
+        "E0451",
+        "E0560",
+        "E0599",
+        "E0608",
+        "E0609",
+        "E0610",
+        "E0614",
+        "E0615",
+        "E0616",
+        "E0618",
+        "E0624",
+        "E0631",
+        "E0689"
+      ],
+      "blurb": "Mismatched types, unsatisfied trait bounds, methods and fields that do not exist on the receiver. Python has one integer type and no trait bounds."
+    },
+    {
+      "id": "imports",
+      "label": "Unresolved imports & deps",
+      "short": "Imports / deps",
+      "codes": [
+        "E0405",
+        "E0412",
+        "E0422",
+        "E0423",
+        "E0425",
+        "E0428",
+        "E0431",
+        "E0432",
+        "E0433",
+        "E0463",
+        "E0464",
+        "E0468",
+        "E0469",
+        "E0531",
+        "E0574",
+        "E0576",
+        "E0577",
+        "E0583",
+        "E0603"
+      ],
+      "blurb": "The model reached for a path, item or crate that is not in this workspace's Cargo.toml. Name resolution failed before typeck ran."
+    },
+    {
+      "id": "other_compile",
+      "label": "Other compile errors",
+      "short": "Other compile",
+      "codes": [
+        "E0072",
+        "E0080",
+        "E0133",
+        "E0201",
+        "E0601",
+        "E0658"
+      ],
+      "blurb": "Everything else rustc rejected: syntax, unstable features, malformed items, and any code not named in the tables above."
+    },
+    {
+      "id": "test_fail",
+      "label": "Test-logic failures",
+      "short": "Test logic",
+      "codes": [],
+      "blurb": "It compiled. It was wrong. Semantics lost in translation, caught by the project's own suite."
+    },
+    {
+      "id": "harness",
+      "label": "Extraction / transport / timeout",
+      "short": "Harness",
+      "codes": [],
+      "blurb": "No usable function in the response, an API error, or the test budget blown. Not a statement about the model's Rust."
+    }
+  ],
+  "models": [
+    {
+      "model": "fable",
+      "label": "Claude Fable 5",
+      "family": "claude",
+      "attempt_0": {
+        "borrow": 0,
+        "types": 6,
+        "imports": 0,
+        "other_compile": 0,
+        "test_fail": 2,
+        "harness": 0
+      },
+      "attempt_1": {
+        "borrow": 0,
+        "types": 0,
+        "imports": 0,
+        "other_compile": 0,
+        "test_fail": 0,
+        "harness": 0
+      },
+      "harness_breakdown": {
+        "attempt_0": {},
+        "attempt_1": {}
+      }
+    },
+    {
+      "model": "opus",
+      "label": "Claude Opus 5",
+      "family": "claude",
+      "attempt_0": {
+        "borrow": 0,
+        "types": 7,
+        "imports": 2,
+        "other_compile": 0,
+        "test_fail": 0,
+        "harness": 0
+      },
+      "attempt_1": {
+        "borrow": 0,
+        "types": 0,
+        "imports": 0,
+        "other_compile": 0,
+        "test_fail": 0,
+        "harness": 0
+      },
+      "harness_breakdown": {
+        "attempt_0": {},
+        "attempt_1": {}
+      }
+    },
+    {
+      "model": "sonnet",
+      "label": "Claude Sonnet 5",
+      "family": "claude",
+      "attempt_0": {
+        "borrow": 0,
+        "types": 17,
+        "imports": 0,
+        "other_compile": 0,
+        "test_fail": 6,
+        "harness": 0
+      },
+      "attempt_1": {
+        "borrow": 0,
+        "types": 4,
+        "imports": 0,
+        "other_compile": 0,
+        "test_fail": 6,
+        "harness": 0
+      },
+      "harness_breakdown": {
+        "attempt_0": {},
+        "attempt_1": {}
+      }
+    },
+    {
+      "model": "gpt-5.6-sol",
+      "label": "GPT-5.6 Sol",
+      "family": "gpt",
+      "attempt_0": {
+        "borrow": 0,
+        "types": 20,
+        "imports": 4,
+        "other_compile": 0,
+        "test_fail": 3,
+        "harness": 1
+      },
+      "attempt_1": {
+        "borrow": 0,
+        "types": 1,
+        "imports": 0,
+        "other_compile": 0,
+        "test_fail": 7,
+        "harness": 1
+      },
+      "harness_breakdown": {
+        "attempt_0": {
+          "TIMEOUT": 1
+        },
+        "attempt_1": {
+          "TIMEOUT": 1
+        }
+      }
+    },
+    {
+      "model": "gpt-5.5",
+      "label": "GPT-5.5",
+      "family": "gpt",
+      "attempt_0": {
+        "borrow": 0,
+        "types": 19,
+        "imports": 4,
+        "other_compile": 0,
+        "test_fail": 4,
+        "harness": 1
+      },
+      "attempt_1": {
+        "borrow": 0,
+        "types": 3,
+        "imports": 2,
+        "other_compile": 0,
+        "test_fail": 2,
+        "harness": 1
+      },
+      "harness_breakdown": {
+        "attempt_0": {
+          "TIMEOUT": 1
+        },
+        "attempt_1": {
+          "TIMEOUT": 1
+        }
+      }
+    },
+    {
+      "model": "gpt-5.6-terra",
+      "label": "GPT-5.6 Terra",
+      "family": "gpt",
+      "attempt_0": {
+        "borrow": 0,
+        "types": 24,
+        "imports": 1,
+        "other_compile": 0,
+        "test_fail": 6,
+        "harness": 1
+      },
+      "attempt_1": {
+        "borrow": 0,
+        "types": 5,
+        "imports": 0,
+        "other_compile": 0,
+        "test_fail": 6,
+        "harness": 1
+      },
+      "harness_breakdown": {
+        "attempt_0": {
+          "EXTRACTION_ERROR": 1
+        },
+        "attempt_1": {
+          "TIMEOUT": 1
+        }
+      }
+    },
+    {
+      "model": "gpt-5.6-luna",
+      "label": "GPT-5.6 Luna",
+      "family": "gpt",
+      "attempt_0": {
+        "borrow": 0,
+        "types": 30,
+        "imports": 2,
+        "other_compile": 0,
+        "test_fail": 6,
+        "harness": 0
+      },
+      "attempt_1": {
+        "borrow": 1,
+        "types": 8,
+        "imports": 0,
+        "other_compile": 0,
+        "test_fail": 6,
+        "harness": 0
+      },
+      "harness_breakdown": {
+        "attempt_0": {},
+        "attempt_1": {}
+      }
+    },
+    {
+      "model": "haiku",
+      "label": "Claude Haiku 4.5",
+      "family": "claude",
+      "attempt_0": {
+        "borrow": 0,
+        "types": 32,
+        "imports": 3,
+        "other_compile": 0,
+        "test_fail": 6,
+        "harness": 0
+      },
+      "attempt_1": {
+        "borrow": 0,
+        "types": 16,
+        "imports": 1,
+        "other_compile": 0,
+        "test_fail": 5,
+        "harness": 0
+      },
+      "harness_breakdown": {
+        "attempt_0": {},
+        "attempt_1": {}
+      }
+    }
+  ],
+  "top_codes": [
+    {
+      "code": "E0599",
+      "bucket": "types",
+      "count": 74,
+      "message": "no method named this found for the receiver"
+    },
+    {
+      "code": "E0609",
+      "bucket": "types",
+      "count": 43,
+      "message": "no field with this name on the type"
+    },
+    {
+      "code": "E0308",
+      "bucket": "types",
+      "count": 34,
+      "message": "mismatched types"
+    },
+    {
+      "code": "E0425",
+      "bucket": "imports",
+      "count": 19,
+      "message": "cannot find value in this scope"
+    },
+    {
+      "code": "E0277",
+      "bucket": "types",
+      "count": 17,
+      "message": "the trait bound is not satisfied"
+    },
+    {
+      "code": "E0560",
+      "bucket": "types",
+      "count": 12,
+      "message": "struct has no field with this name"
+    },
+    {
+      "code": "E0433",
+      "bucket": "imports",
+      "count": 11,
+      "message": "failed to resolve: undeclared crate or module"
+    },
+    {
+      "code": "E0061",
+      "bucket": "types",
+      "count": 9,
+      "message": "wrong number of arguments to function"
+    },
+    {
+      "code": "E0451",
+      "bucket": "types",
+      "count": 4,
+      "message": "field of struct is private"
+    },
+    {
+      "code": "E0614",
+      "bucket": "types",
+      "count": 4,
+      "message": "type cannot be dereferenced"
+    },
+    {
+      "code": "E0282",
+      "bucket": "types",
+      "count": 2,
+      "message": "type annotations needed"
+    },
+    {
+      "code": "E0432",
+      "bucket": "imports",
+      "count": 1,
+      "message": "unresolved import"
+    }
+  ]
+}

@@ -10,3 +10,4 @@ dataset2/
 # unlicensed RustRepoTrans prompt text, so raw captures never enter git.
 # Curated gallery snippets are extracted into site/data instead.
 results/*/*.artifacts/
+gallery-runs/
