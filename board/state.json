@@ -220,7 +220,7 @@
       "id": "flake_rerun",
       "label": "Env-flake clean reruns",
       "status": "running",
-      "note": "Started 19:45 PDT on idle machine: 102 task-runs as full-<model>-02 (fable 13, sol 18, terra 17, luna 15, sonnet 15, opus 11 incl. contaminated backfill records, haiku 8, gpt-5.5 5 incl. 2 TIMEOUTs). FLAKY_TESTS retry now covers all 4 env-sensitive tests. Aggregator later-run-override replaces contaminated verdicts. ETA 4-6 h.",
+      "note": "Claude models done (fable 12/13 one-shot clean, opus, sonnet, haiku); sol mid-run, terra/luna/gpt-5.5 queued. KEY FINDING: idle_timeout_with_keep_alive_no still failed 3-retry sole on the IDLE machine 15x -> it's inherently broken on this host (spike saw 2/3 fail on untouched tree). Promoted to libp2p baseline allowlist (commit 36477fc); remaining models' reruns start clean. ping_pong/connect/bootstrap: zero sticky failures when idle \u2014 pure load flakes, stay in FLAKY_TESTS. Aggregator getting retroactive rebaseline + whole-task override (worker on agg-rebaseline branch) to flip the 15 pre-promotion sticky records and stop stale attempt-1 merge pollution.",
       "deps": [
         "run_claude",
         "run_gpt",
