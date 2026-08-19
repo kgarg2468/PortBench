@@ -94,8 +94,8 @@
     {
       "id": "site",
       "label": "Leaderboard site",
-      "status": "running",
-      "note": "site/data/real wired + committed: fable 92/100 one-shot (100 after repair), opus 91/100 (100), gpt-5.5 72/91, sonnet 77/90, sol 72/90, terra 68/87, luna 62/85 ($0.003/solved cheapest), haiku 59/78. Pooled repair recovery 62%. Browser-verified, no console errors. Gallery snippets pending capture lane.",
+      "status": "done",
+      "note": "DONE: static site fully wired to real data incl. curated gallery; browser-verified, zero console errors. Living-page loop: new sweep = aggregate + attach_gallery + data commit, no code changes.",
       "deps": [
         "taxonomy",
         "site_scaffold",
@@ -210,8 +210,8 @@
     {
       "id": "gallery_capture",
       "label": "Gallery capture\n(--keep-artifacts + subset rerun)",
-      "status": "running",
-      "note": "Capture lane started 04:32: 17 published gallery entries re-generated with --keep-artifacts into gallery-runs/ (gitignored). Curation step attaches code+rustc snippets only where the fresh attempt reproduces the same failure class; entries without a reproduction keep model_code_available:false.",
+      "status": "done",
+      "note": "DONE 05:5x: 17 pairs captured (30 attempt records). 10/17 entries reproduced their recorded verdict and now show real model code + rustc output (E0277 Ord-on-sort, E0609 no-field x2, E0433 imports x2, E0599, E0308, 2 test failures, 1 timeout). 7 kept placeholders (fresh sample passed or diverged \u2014 disclosed in gallery comment). Local paths scrubbed.",
       "deps": [
         "aggregator"
       ]
