@@ -24,6 +24,12 @@ BASELINE_FAILURES: dict[str, frozenset[str]] = {
             "tests::basic_resolve",                              # libp2p-dns, live DNS + IPv6
             "test_discovery_async_std_ipv6",                     # libp2p-mdns, IPv6 multicast
             "test_discovery_tokio_ipv6",                         # libp2p-mdns, IPv6 multicast
+            # Promoted from FLAKY_TESTS after the clean-rerun pass: it failed 2/3 of the
+            # time on the UNTOUCHED tree in the spike, and on an idle machine it still
+            # failed three by-name retries in a row for 15 rerun attempts across models.
+            # A timer test that mostly fails on the reference tree is an environment
+            # failure on this host, not something any model can affect.
+            "connection::tests::idle_timeout_with_keep_alive_no",  # libp2p-swarm, timing
         }
     ),
 }
@@ -37,7 +43,6 @@ BASELINE_FAILURES: dict[str, frozenset[str]] = {
 # timing-sensitive connection tests.
 FLAKY_TESTS: frozenset[str] = frozenset(
     {
-        "connection::tests::idle_timeout_with_keep_alive_no",  # libp2p-swarm, timing flake
         "ping_pong",                                           # libp2p-swarm integration, timing
         "connect",                                             # libp2p connection test, timing
         "bootstrap::tests::given_periodic_bootstrap_when_routing_table_updated_"
